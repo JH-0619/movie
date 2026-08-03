@@ -1,0 +1,881 @@
+
+<!DOCTYPE html>
+<html lang='ko'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>영화 흥행 전략 AI 대시보드</title>
+    <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
+    <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css' rel='stylesheet'>
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Pretendard', sans-serif; }
+        .dashboard-card { border: none; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); background: white; margin-bottom: 20px; }
+        .header-section { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 40px 0; border-radius: 0 0 30px 30px; margin-bottom: 30px; }
+        .prob-value { font-size: 3.5rem; font-weight: 800; color: #2563eb; }
+        .badge-custom { padding: 8px 15px; border-radius: 10px; font-weight: 600; }
+
+        /* 성향 진단 퀴즈 오버레이 */
+        #quizOverlay {
+            position: fixed; inset: 0; z-index: 2000;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 60%, #60a5fa 100%);
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .quiz-card {
+            background: white; border-radius: 20px; padding: 44px 40px; max-width: 560px; width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .quiz-progress { height: 6px; border-radius: 4px; background: #e5e7eb; overflow: hidden; margin-bottom: 28px; }
+        .quiz-progress-bar { height: 100%; background: linear-gradient(90deg,#2563eb,#60a5fa); transition: width .3s ease; }
+        .quiz-step-label { font-size: .8rem; color: #6b7280; font-weight: 700; letter-spacing: .05em; margin-bottom: 8px; }
+        .quiz-question { font-size: 1.4rem; font-weight: 800; color: #111827; margin-bottom: 26px; line-height: 1.4; }
+        .quiz-option {
+            display: block; width: 100%; text-align: left; padding: 16px 20px; margin-bottom: 12px;
+            border: 2px solid #e5e7eb; border-radius: 12px; background: #fff; font-weight: 600; color: #374151;
+            transition: all .15s ease; cursor: pointer;
+        }
+        .quiz-option:hover { border-color: #3b82f6; background: #eff6ff; color: #1e3a8a; }
+        .quiz-result-badge {
+            display: inline-block; padding: 10px 22px; border-radius: 30px; font-weight: 800; font-size: 1.1rem;
+            background: linear-gradient(135deg,#1e3a8a,#3b82f6); color: white; margin-bottom: 14px;
+        }
+        #investorTag {
+            display: inline-flex; align-items: center; gap: 8px; background: #eff6ff; color: #1e3a8a;
+            padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: .85rem; cursor: pointer;
+            border: 1px solid #bfdbfe;
+        }
+        .genre-check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .genre-check-item {
+            display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #e5e7eb;
+            border-radius: 8px; cursor: pointer; font-size: .9rem; user-select: none;
+        }
+        .genre-check-item:hover { background: #f8fafc; }
+        .genre-check-item.checked { background: #eff6ff; border-color: #3b82f6; color: #1e3a8a; font-weight: 700; }
+        .metric-card { background: #f8fafc; border-radius: 12px; padding: 16px 18px; height: 100%; }
+        .metric-card .metric-label { font-size: .8rem; color: #6b7280; font-weight: 700; margin-bottom: 6px; }
+        .metric-card .metric-value { font-size: 1.4rem; font-weight: 800; color: #1e3a8a; margin-bottom: 4px; }
+        .metric-card .metric-desc { font-size: .8rem; color: #6b7280; }
+
+        /* ── 유형별 핵심 지표 시각화 ── */
+        .type-switch-row { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+        .type-switch-label { font-size:.78rem; font-weight:800; color:#6b7280; letter-spacing:.04em; margin-right:2px; }
+        .type-pill {
+            border:1px solid #e5e7eb; background:#fff; color:#4b5563; border-radius:20px;
+            padding:6px 14px; font-size:.85rem; font-weight:600; cursor:pointer; transition:all .15s ease;
+        }
+        .type-pill:hover { border-color:#3b82f6; color:#1e3a8a; background:#eff6ff; }
+        .type-pill.active { background:#1e3a8a; border-color:#1e3a8a; color:#fff; font-weight:800; }
+        .type-pill .pill-mine { font-size:.7rem; opacity:.75; margin-left:4px; }
+        .rank-badge {
+            width:26px; height:26px; border-radius:50%; background:#1e3a8a; color:#fff;
+            display:inline-flex; align-items:center; justify-content:center;
+            font-size:.8rem; font-weight:800; flex:none;
+        }
+        .analysis-card-head { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+        .analysis-card-head h6 { margin:0; font-weight:800; font-size:.98rem; }
+        .cat-chip { font-size:.7rem; font-weight:700; padding:3px 8px; border-radius:8px; white-space:nowrap; }
+        .sir-block { font-size:.83rem; line-height:1.6; }
+        .sir-block .sir-key { font-weight:800; margin-right:4px; }
+        .sir-block > div + div { margin-top:6px; }
+        .chart-box { height:220px; position:relative; }
+        .why-note { font-size:.82rem; color:#6b7280; background:#f8fafc; border-left:3px solid #3b82f6;
+            border-radius:8px; padding:10px 14px; margin-bottom:16px; }
+    </style>
+</head>
+<body>
+
+    <!-- ══════════ STEP 1: 투자 성향 진단 퀴즈 ══════════ -->
+    <div id="quizOverlay">
+        <div class="quiz-card">
+            <div id="quizProgressWrap">
+                <div class="quiz-progress"><div class="quiz-progress-bar" id="quizProgressBar" style="width:0%"></div></div>
+            </div>
+            <div id="quizBody"></div>
+        </div>
+    </div>
+
+    <div id="mainApp" style="display:none;">
+    <div class='header-section text-center'>
+        <h1 class='display-5 fw-bold'>🎬 영화 흥행 전략 시뮬레이터</h1>
+        <p class='lead'>AI 앙상블 모델 & 과거 ROI 빅데이터 통합 분석</p>
+        <div class="mt-3">
+            <span id="investorTag" onclick="restartQuiz()">🎯 유형 확인 중...</span>
+        </div>
+    </div>
+
+    <div class='container'>
+        <div class='row'>
+            <div class='col-lg-4'>
+                <div class='card dashboard-card p-4'>
+                    <h4 class='mb-4'>🔍 기획 파라미터</h4>
+                    <div class='mb-3'>
+                        <label class='form-label fw-bold'>주요 장르 선택 <small class="text-muted fw-normal">(중복 선택 가능)</small></label>
+                        <div class="genre-check-grid" id="genreCheckGrid"></div>
+                    </div>
+                    <div class='mb-4'>
+                        <label class='form-label fw-bold'>개봉 예정 월</label>
+                        <input type='range' class='form-range' min='1' max='12' id='monthSlider' value='1'>
+                        <div class='text-center fw-bold text-primary'><span id='monthValue'>1</span>월</div>
+                    </div>
+                    <button onclick='simulate()' class='btn btn-primary btn-lg w-100 fw-bold'>시뮬레이션 실행</button>
+                </div>
+            </div>
+
+            <div class='col-lg-8'>
+                <div class='card dashboard-card p-4 text-center'>
+                    <h5 class='text-muted'>AI 앙상블 종합 성공 확률</h5>
+                    <div id='probDisplay' class='prob-value'>--%</div>
+                </div>
+
+                <div class='row'>
+                    <div class='col-md-6'>
+                        <div class='card dashboard-card p-3'>
+                            <h6 class='fw-bold mb-3'>📊 장르별 시장 성공률</h6>
+                            <canvas id='marketChart'></canvas>
+                        </div>
+                    </div>
+                    <div class='col-md-6'>
+                        <div class='card dashboard-card p-3'>
+                            <h6 class='fw-bold mb-3'>💰 예산 규모별 ROI (최고 효율)</h6>
+                            <canvas id='roiChart'></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <hr class="my-5">
+
+        <div class="row">
+            <div class="col-12">
+                <h3 class="fw-bold mb-1" id="investorDashboardTitle">📊 당신을 위한 분석</h3>
+                <p class="text-muted mb-3" id="investorDashboardDesc">시뮬레이션을 실행하면 진단된 투자 성향에 맞춘 지표가 여기에 표시됩니다.</p>
+            </div>
+        </div>
+        <div class="row mb-3" id="investorMetricGrid"></div>
+        <div class="card dashboard-card p-4 mb-4" id="investorInsightCard" style="display:none;">
+            <div class="d-flex align-items-start gap-2">
+                <span style="font-size:1.4rem;">💡</span>
+                <div>
+                    <div class="fw-bold mb-1">인사이트</div>
+                    <div id="investorInsightText" style="font-size:.92rem; color:#374151;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════ 유형별 핵심 지표 시각화 (읽기 순서 1~5) ══════════ -->
+        <div class="row">
+            <div class="col-12">
+                <h5 class="fw-bold mb-1">📈 이 유형이 먼저 봐야 할 지표 5종
+                    <span class="badge bg-primary-subtle text-primary" style="font-size:.72rem;">읽기 순서대로</span>
+                </h5>
+                <p class="text-muted mb-3" style="font-size:.9rem;">
+                    55종 분석 인벤토리 중 이 성향의 판단에 직접 쓰이는 5개만 골라 순서대로 배치했습니다.
+                    같은 차트라도 유형에 따라 읽는 방향이 다릅니다.
+                </p>
+                <div class="type-switch-row mb-3" id="typeSwitchRow"></div>
+                <div class="why-note" id="typeWhyNote"></div>
+            </div>
+        </div>
+        <div class="row" id="typeChartGrid"></div>
+
+        <hr class="my-5">
+
+        <div class="row">
+            <div class="col-12">
+                <h3 class="fw-bold mb-1">📚 심화 데이터 분석 <span class="badge bg-primary-subtle text-primary" style="font-size:.8rem;">KOBIS 688편 원자료</span></h3>
+                <p class="text-muted mb-4">Analysis Catalog 스펙(요약 → 차트 → 인사이트 → 추천)을 따르는 8종의 독립 분석 모듈입니다. 각 카드는 <code>render(dataset, prediction)</code> 계약을 통해 동일한 원자료에서 산출되었습니다. 위 <b>유형별 5종</b>과 달리 이 섹션은 성향과 무관한 공통 레퍼런스입니다.</p>
+            </div>
+        </div>
+
+        <div class="row" id="deepAnalysisGrid"></div>
+
+    </div>
+    </div><!-- /#mainApp -->
+
+    <script>
+        const config = {"roi_stats": {"드라마": {"대예산 (100억 이상)": 3.79, "소예산 (50억 미만)": 7.32, "중예산 (50억~100억)": 5.47}, "범죄": {"대예산 (100억 이상)": 4.7, "소예산 (50억 미만)": 7.83, "중예산 (50억~100억)": 4.99}, "액션": {"대예산 (100억 이상)": 4.6, "소예산 (50억 미만)": 0.0, "중예산 (50억~100억)": 5.85}, "코메디": {"대예산 (100억 이상)": 4.06, "소예산 (50억 미만)": 8.82, "중예산 (50억~100억)": 5.06}}, "market_success": {"SF": 0.667, "가족": 0.417, "공포": 0.308, "느와르": 0.5, "드라마": 0.593, "멜로/로맨스": 0.267, "멜로드라마": 0.438, "뮤지컬": 0.286, "뮤직": 0.095, "미스터리": 0.474, "범죄": 0.634, "스릴러": 0.485, "스포츠": 0.833, "시대극/사극": 0.788, "아동": 0.333, "액션": 0.608, "어드벤처": 0.413, "인물": 0.13, "자연ㆍ환경": 0.0, "재난": 1.0, "전기": 0.714, "전쟁": 0.778, "종교": 0.2, "코메디": 0.482, "판타지": 0.5}, "top_genres": ["드라마", "액션", "코메디", "범죄", "스릴러", "미스터리", "공포", "어드벤처", "멜로/로맨스", "시대극/사극"], "ensemble_base": 0.403};
+        let marketChart, roiChart;
+        const CAT_LABEL = {G:'장르',M:'시장',S:'시즌',P:'제작',R:'매출',I:'투자',O:'OTT',A:'관객',K:'리스크',T:'트렌드'};
+        const CAT_COLOR = {G:'#8b5cf6',M:'#f59e0b',S:'#06b6d4',P:'#ef4444',R:'#10b981',I:'#3b82f6',O:'#ec4899',A:'#14b8a6',K:'#f43f5e',T:'#6366f1'};
+
+
+        document.getElementById('monthSlider').addEventListener('input', (e) => {
+            document.getElementById('monthValue').innerText = e.target.value;
+        });
+
+        /* 장르 체크박스 그리드 렌더링 (다중 선택) */
+        function buildGenreCheckboxes() {
+            const wrap = document.getElementById('genreCheckGrid');
+            config.top_genres.forEach((g, i) => {
+                const id = 'genre_' + i;
+                const item = document.createElement('label');
+                item.className = 'genre-check-item' + (i < 2 ? ' checked' : '');
+                item.setAttribute('for', id);
+                item.innerHTML = `<input type="checkbox" id="${id}" value="${g}" ${i < 2 ? 'checked' : ''} style="display:none;"><span>${g}</span>`;
+                item.addEventListener('click', () => {
+                    const cb = item.querySelector('input');
+                    cb.checked = !cb.checked;
+                    item.classList.toggle('checked', cb.checked);
+                });
+                wrap.appendChild(item);
+            });
+        }
+
+        function getSelectedGenres() {
+            return Array.from(document.querySelectorAll('#genreCheckGrid input:checked')).map(cb => cb.value);
+        }
+
+        function simulate() {
+            const genres = getSelectedGenres();
+            if(genres.length === 0) { alert('장르를 선택해주세요!'); return; }
+
+            const month = Number(document.getElementById('monthSlider').value);
+            const avgMarket = genres.reduce((a, g) => a + (config.market_success[g] || 0.4), 0) / genres.length;
+            const monthEffect = Math.sin((month - 1) * Math.PI / 6) * 5;
+            const finalProb = Math.min(95, Math.max(5, (config.ensemble_base * 100 + avgMarket * 20 + monthEffect)));
+
+            const display = document.getElementById('probDisplay');
+            display.innerText = finalProb.toFixed(1) + '%';
+            display.style.color = finalProb >= 50 ? '#059669' : '#dc2626';
+
+            renderMarketChart(genres);
+            renderRoiChart(genres[0]);
+            renderInvestorDashboard(genres, finalProb, month);
+        }
+
+        function renderMarketChart(selected) {
+            if(marketChart) marketChart.destroy();
+            const ctx = document.getElementById('marketChart');
+            marketChart = new Chart(ctx, { 
+                type: 'bar', 
+                data: { 
+                    labels: selected, 
+                    datasets: [{ label: '성공률', data: selected.map(g => config.market_success[g]), backgroundColor: '#3b82f6' }] 
+                },
+                options: { scales: { y: { max: 1, min: 0 } } }
+            });
+        }
+
+        function renderRoiChart(mainGenre) {
+            if(roiChart) roiChart.destroy();
+            const genreData = config.roi_stats[mainGenre] || {};
+            const tiers = Object.keys(genreData);
+            const ctx = document.getElementById('roiChart');
+            roiChart = new Chart(ctx, { 
+                type: 'bar', 
+                data: { 
+                    labels: tiers, 
+                    datasets: [{ label: '평균 ROI', data: tiers.map(t => genreData[t]), backgroundColor: '#f59e0b' }] 
+                }
+            });
+        }
+        /* ============================================================
+           STEP 1: 투자 성향 진단 퀴즈 (최종_구현_로드맵.md 기준 5문항 → 6유형)
+        ============================================================ */
+        const QUIZ_QUESTIONS = [
+            {
+                q: '대박보다 본전이 먼저다',
+                key: 'q1',
+                options: [ {label:'네, 손실 없는 게 우선입니다', value:'yes'}, {label:'아니요, 기대 수익이 더 중요합니다', value:'no'} ]
+            },
+            {
+                q: '무엇이 더 무섭습니까?',
+                key: 'q2',
+                options: [ {label:'손실 자체가 무섭다', value:'loss'}, {label:'예측이 안 되는 변동성이 무섭다', value:'volatility'} ]
+            },
+            {
+                q: '관객수보다 매출 숫자에 더 눈이 간다',
+                key: 'q3',
+                options: [ {label:'네, 매출액을 봅니다', value:'yes'}, {label:'아니요, 관객수를 봅니다', value:'no'} ]
+            },
+            {
+                q: '천만 관객, 한 번쯤 노려봐야죠?',
+                key: 'q4',
+                options: [ {label:'네, 도전해볼 만합니다', value:'yes'}, {label:'아니요, 안정적인 게 낫습니다', value:'no'} ]
+            },
+            {
+                q: '큰 판이라면 제작비도 더 넣을 수 있다',
+                key: 'q5',
+                options: [ {label:'네, 규모를 키울 수 있습니다', value:'yes'}, {label:'아니요, 예산은 제한적입니다', value:'no'} ]
+            }
+        ];
+
+        const INVESTOR_META = {
+            maximum_achiever:   { label: '① 최대 도달형', icon: '🚀', tagline: '높은 수익을 추구하는 도전적 투자자' },
+            stable_achiever:    { label: '② 안정 도달형', icon: '📈', tagline: '반복 가능한 성과를 중시하는 투자자' },
+            large_scale:        { label: '③ 대형 성과형', icon: '🏆', tagline: '큰 스케일의 성공을 노리는 투자자' },
+            cost_efficient:     { label: '④ 비용 효율형', icon: '🎯', tagline: '제한된 예산 내 최대 효율을 추구' },
+            break_even_focused: { label: '⑤ 본전 사수형', icon: '🛡️', tagline: '손실 방지가 1순위인 투자자' },
+            downside_defender:  { label: '⑥ 하방 방어형', icon: '🔒', tagline: '최악의 상황 회피가 최우선인 투자자' }
+        };
+
+        let quizAnswers = {};
+        let currentQuizStep = 0;
+        let investorType = 'stable_achiever';
+
+        function classifyInvestor(a) {
+            if (a.q1 === 'yes') {
+                if (a.q2 === 'loss') return a.q3 === 'yes' ? 'break_even_focused' : 'downside_defender';
+                return 'break_even_focused';
+            }
+            if (a.q4 === 'yes') {
+                return a.q5 === 'yes' ? 'large_scale' : 'maximum_achiever';
+            }
+            return a.q5 === 'no' ? 'cost_efficient' : 'stable_achiever';
+        }
+
+        function renderQuizStep() {
+            const bar = document.getElementById('quizProgressBar');
+            const body = document.getElementById('quizBody');
+
+            if (currentQuizStep === 0) {
+                bar.style.width = '0%';
+                body.innerHTML = `
+                    <div class="text-center">
+                        <div style="font-size:3rem;">🎬</div>
+                        <h2 class="fw-bold mt-2 mb-3">투자 성향을 먼저 진단할게요</h2>
+                        <p class="text-muted mb-4">5개의 질문에 답하면, 당신의 투자 성향에 맞춘<br>전용 분석 지표를 우선적으로 보여드립니다.</p>
+                        <button class="btn btn-primary btn-lg w-100 fw-bold" onclick="nextQuizStep()">진단 시작하기 →</button>
+                    </div>`;
+                return;
+            }
+
+            if (currentQuizStep >= 1 && currentQuizStep <= QUIZ_QUESTIONS.length) {
+                const qi = currentQuizStep - 1;
+                const q = QUIZ_QUESTIONS[qi];
+                bar.style.width = (qi / QUIZ_QUESTIONS.length * 100) + '%';
+                body.innerHTML = `
+                    <div class="quiz-step-label">STEP 1 · 질문 ${qi + 1} / ${QUIZ_QUESTIONS.length}</div>
+                    <div class="quiz-question">"${q.q}"</div>
+                    <div id="quizOptions"></div>`;
+                const optWrap = document.getElementById('quizOptions');
+                q.options.forEach(opt => {
+                    const btn = document.createElement('button');
+                    btn.className = 'quiz-option';
+                    btn.textContent = opt.label;
+                    btn.onclick = () => { quizAnswers[q.key] = opt.value; nextQuizStep(); };
+                    optWrap.appendChild(btn);
+                });
+                return;
+            }
+
+            // 결과 화면
+            investorType = classifyInvestor(quizAnswers);
+            const meta = INVESTOR_META[investorType];
+            bar.style.width = '100%';
+            body.innerHTML = `
+                <div class="text-center">
+                    <div style="font-size:3rem;">${meta.icon}</div>
+                    <div class="text-muted fw-bold mt-2 mb-2" style="letter-spacing:.05em;font-size:.8rem;">진단 결과</div>
+                    <div class="quiz-result-badge">${meta.label}</div>
+                    <p class="text-muted mb-4">${meta.tagline}</p>
+                    <button class="btn btn-primary btn-lg w-100 fw-bold" onclick="finishQuiz()">내 분석 대시보드 보기 →</button>
+                </div>`;
+        }
+
+        function nextQuizStep() { currentQuizStep++; renderQuizStep(); }
+
+        let deepAnalysisBuilt = false;
+        function finishQuiz() {
+            document.getElementById('quizOverlay').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+            const tag = document.getElementById('investorTag');
+            const meta = INVESTOR_META[investorType];
+            tag.innerHTML = `${meta.icon} 당신은 <b>${meta.label}</b> 입니다 · 다시 진단하기`;
+            simulate();
+            if (!deepAnalysisBuilt) { buildDeepAnalysisCards(); deepAnalysisBuilt = true; }
+        }
+
+        function restartQuiz() {
+            quizAnswers = {}; currentQuizStep = 0; viewingType = null;
+            document.getElementById('quizOverlay').style.display = 'flex';
+            document.getElementById('mainApp').style.display = 'none';
+            renderQuizStep();
+        }
+
+        /* ============================================================
+           STEP 4: 유형별 맞춤 분석 대시보드
+           예산(제작비) 입력값이 없는 프로토타입이므로, ROI/BEP류 지표는
+           KOBIS 데이터의 예산 구간(roi_stats) 평균 배수를 "참고치"로 제공합니다.
+        ============================================================ */
+        const TICKET_PRICE = 9500; // 2024년 평균 객단가(원) 근사치
+
+        function avgMarketOf(genres) {
+            return genres.reduce((a, g) => a + (config.market_success[g] || 0.4), 0) / genres.length;
+        }
+        function tierAvg(genres, tier) {
+            const vals = genres.map(g => (config.roi_stats[g] || {})[tier]).filter(v => v > 0);
+            if (vals.length) return vals.reduce((a, b) => a + b, 0) / vals.length;
+            const all = Object.values(config.roi_stats).map(o => o[tier]).filter(v => v > 0);
+            return all.reduce((a, b) => a + b, 0) / all.length;
+        }
+        function expectedAudience(finalProb) {
+            return Math.round(50000 + Math.pow(finalProb / 100, 2) * 15000000);
+        }
+        function eok(audience) { // 관객수 → 억원 (매출)
+            return (audience * TICKET_PRICE / 1e8);
+        }
+        function fmtEok(v) { return v.toFixed(1) + '억원'; }
+        function fmtMan(v) { return Math.round(v / 10000).toLocaleString() + '만 명'; }
+
+        const SEASON_MAP = { 여름: [7,8], 겨울: [12,1,2], 봄: [3,4,5], 가을: [9,10,11] };
+        function seasonOf(month) {
+            for (const [name, months] of Object.entries(SEASON_MAP)) if (months.includes(month)) return name;
+            return '기타';
+        }
+        const MONTH_TOTAL = {1:82682315,2:54276252,3:27195826,4:37864984,5:74929981,6:46012684,7:111648967,8:121761210,9:79591734,10:55697305,11:65829616,12:108199080};
+
+        const INVESTOR_DASHBOARDS = {
+            maximum_achiever: (genres, prob, month) => {
+                const rev = eok(expectedAudience(prob));
+                const top25 = rev * 1.8;
+                const best = genres.reduce((m, g) => (config.market_success[g]||0) > (config.market_success[m]||0) ? g : m, genres[0]);
+                return {
+                    cards: [
+                        { label: '상위 25% 성과 대비', value: fmtEok(rev), desc: `동일 조건 상위 25% 추정치 ${fmtEok(top25)} 대비 ${(rev/top25*100).toFixed(0)}% 수준` },
+                        { label: '선택 장르 중 최고 성공률', value: `${best} ${(config.market_success[best]*100).toFixed(1)}%`, desc: '장르별 시장 성공률(KOBIS 전체 기준)' },
+                        { label: `${month}월 개봉 (${seasonOf(month)})`, value: fmtMan(MONTH_TOTAL[month]), desc: `해당 월 전체 시장 총관객 규모 · 성수기는 7·8·12월` },
+                        { label: '상위 쏠림 리스크', value: '상위 10% = 57.5%', desc: '상위 10% 영화가 전체 관객의 57.5%를 독점(J01 파레토 분석)' }
+                    ],
+                    insight: `이 영화가 최고 성과를 거두려면, 선택한 장르 중 시장 성공률이 가장 높은 <b>${best}</b> 비중을 키우고, 성수기(7·8·12월) 개봉을 우선 검토하세요. 다만 상위 10%가 관객을 독점하는 구조이므로, 확실한 차별화 포인트 없이는 상위권 진입이 어렵습니다.`
+                };
+            },
+            stable_achiever: (genres, prob, month) => {
+                const rev = eok(expectedAudience(prob));
+                const spread = Math.max(...genres.map(g => config.market_success[g]||0.4)) - Math.min(...genres.map(g => config.market_success[g]||0.4));
+                const worst = rev * 0.35;
+                return {
+                    cards: [
+                        { label: '예상 매출 (중앙값 대비)', value: fmtEok(rev), desc: `동일 조건 중앙값 대비 기준선. 편차가 클수록 예측 신뢰도는 낮아집니다.` },
+                        { label: '선택 장르 변동성', value: `±${(spread*100).toFixed(1)}%p`, desc: spread > 0.2 ? '장르 간 성공률 격차가 커 편차 위험이 있음' : '장르 간 성공률 격차가 작아 안정적' },
+                        { label: `${month}월 개봉 성과`, value: fmtMan(MONTH_TOTAL[month]), desc: `${seasonOf(month)} 시즌 총관객 규모` },
+                        { label: '최악 시나리오', value: fmtEok(worst), desc: '하위 25% 수준 추정치' }
+                    ],
+                    insight: `안정적인 선택이 되려면 장르 간 성공률 격차(±${(spread*100).toFixed(1)}%p)를 줄이는 방향으로 장르 조합을 재검토하고, 계절성이 뚜렷한 달(3~4월 비수기)은 피하는 것이 좋습니다.`
+                };
+            },
+            large_scale: (genres, prob, month) => {
+                const big = tierAvg(genres, '대예산 (100억 이상)');
+                const mid = tierAvg(genres, '중예산 (50억~100억)');
+                const small = tierAvg(genres, '소예산 (50억 미만)');
+                const seriesLabel = '범죄도시';
+                return {
+                    cards: [
+                        { label: '대예산(100억+) 평균 ROI', value: `${big.toFixed(2)}배`, desc: '선택 장르 기준, 100억 이상 투입 시 평균 회수 배수' },
+                        { label: '중예산 대비 대예산 배율', value: `${(big/mid*100).toFixed(0)}%`, desc: mid ? `중예산 ROI(${mid.toFixed(2)}배) 대비 상대 효율` : '데이터 부족' },
+                        { label: '참고 감독 사례 (대작 연출)', value: '김용화 1,225만', desc: '3편 이상 연출 감독 중 작품당 관객수 중앙값 최고(신과함께 시리즈)' },
+                        { label: '프랜차이즈 확장 사례', value: seriesLabel, desc: '속편이 전편 대비 흥행 증가한 유일 사례(K03 분석)' }
+                    ],
+                    insight: `대형 프로젝트는 제작비 규모 자체보다 세계관 확장성이 성패를 가릅니다. ${seriesLabel} 사례처럼 매 편 새로운 구조를 제시하는 기획이 대예산 투입의 리스크를 낮춥니다. 정확한 ROI 산출을 위해서는 실제 제작비 입력이 필요합니다.`
+                };
+            },
+            cost_efficient: (genres, prob, month) => {
+                const small = tierAvg(genres, '소예산 (50억 미만)');
+                const mid = tierAvg(genres, '중예산 (50억~100억)');
+                const bestSmallGenre = genres.reduce((m, g) => ((config.roi_stats[g]||{})['소예산 (50억 미만)']||0) > ((config.roi_stats[m]||{})['소예산 (50억 미만)']||0) ? g : m, genres[0]);
+                return {
+                    cards: [
+                        { label: '소예산(50억 미만) 평균 ROI', value: `${small.toFixed(2)}배`, desc: '선택 장르 기준, 저예산 구간 평균 회수 배수' },
+                        { label: '중예산 대비 효율', value: small > mid ? '소예산이 더 효율적' : '중예산이 더 효율적', desc: `소예산 ${small.toFixed(2)}배 vs 중예산 ${mid.toFixed(2)}배` },
+                        { label: '가장 효율 좋은 선택 장르', value: bestSmallGenre, desc: `소예산 구간 ROI ${((config.roi_stats[bestSmallGenre]||{})['소예산 (50억 미만)']||0).toFixed(2)}배` },
+                        { label: '상영시간 효율 참고', value: '110~119분 최고 평점', desc: '상영시간을 늘린다고 흥행이 느는 것은 아님(D02 분석)' }
+                    ],
+                    insight: `제한된 예산으로 최대 효율을 내려면 <b>${bestSmallGenre}</b> 장르의 소예산 구간을 우선 검토하세요. 일반적으로 액션·대작류는 저예산 진입 시 ROI가 급락하는 경향이 있어 피하는 것이 좋습니다.`
+                };
+            },
+            break_even_focused: (genres, prob, month) => {
+                const mid = tierAvg(genres, '중예산 (50억~100억)');
+                const bepOk = mid >= 1;
+                return {
+                    cards: [
+                        { label: 'BEP(손익분기) 달성 가능성', value: bepOk ? '가능성 높음' : '불확실', desc: `중예산 구간 평균 ROI ${mid.toFixed(2)}배 (1.0배 이상이면 회수 가능)` },
+                        { label: '성공 확률(AI 예측)', value: `${prob.toFixed(1)}%`, desc: prob >= 50 ? '절반 이상의 성공 확률' : '성공 확률이 절반 미만 — 신중 검토 필요' },
+                        { label: '상위 쏠림 구조 리스크', value: '상위 20% = 76.7%', desc: '중위권 이하는 손익분기 자체가 어려운 시장 구조(J01)' },
+                        { label: '평점 리스크', value: 'r=0.241', desc: '평점이 낮으면(6점 미만) 관객수가 급감하는 경향(B01)' }
+                    ],
+                    insight: `본전을 보장하려면 중예산(50~100억) 구간에 머무르며 ROI 1배 이상이 검증된 장르 조합을 유지하는 것이 안전합니다. 상위 20%에 들지 못하면 손익분기점 자체를 넘기기 어려운 시장 구조이므로, 확실성이 낮은 신규 시도는 피하세요.`
+                };
+            },
+            downside_defender: (genres, prob, month) => {
+                const rev = eok(expectedAudience(prob));
+                const worst = rev * 0.3, best = rev * 1.8;
+                return {
+                    cards: [
+                        { label: '최악 시나리오 (하위 25%)', value: fmtEok(worst), desc: `현재 예측치(${fmtEok(rev)}) 대비 하방 리스크` },
+                        { label: '추정 범위(IQR)', value: `${fmtEok(worst)} ~ ${fmtEok(best)}`, desc: '하위 25% ~ 상위 25% 추정 구간' },
+                        { label: '피해야 할 리스크 요인', value: '저평점 · 비수기', desc: '평점 6점 미만, 3~4월 개봉은 흥행 하락과 강한 상관' },
+                        { label: '종합 위험도', value: prob >= 60 ? '낮음 ✅' : prob >= 40 ? '중간 ⚠️' : '높음 🔴', desc: `AI 예측 성공확률 ${prob.toFixed(1)}% 기준` }
+                    ],
+                    insight: `최악의 상황을 피하려면 저평점·비수기 개봉을 동시에 피하고, 성공률이 검증된 장르(${genres.join(', ')}) 조합을 유지하세요. 하방 리스크가 감당 가능한 수준인지 반드시 최악 시나리오(${fmtEok(worst)}) 기준으로 재확인하시기 바랍니다.`
+                };
+            }
+        };
+
+
+        /* ============================================================
+           유형별 핵심 지표 시각화 — 55종 인벤토리에서 유형별 5종을 차트로 렌더
+           데이터 출처: KOBIS+KMDb 통합 688편(2014~2024), 댓글 45,790건
+           ANALYSIS_MODULES = 분석 모듈 레지스트리 (Analysis Catalog 계약)
+           TYPE_CORE        = 유형 → 분석 ID 배열 (analysis_mapping 역할)
+        ============================================================ */
+const ANALYSIS_MODULES = {"J1": {"code": "J1", "name": "파레토 — 상위 쏠림 구조", "cat": "M", "type": "bar", "labels": ["상위 5%", "상위 10%", "상위 20%", "상위 30%", "상위 50%", "상위 100%"], "series": [{"label": "누적 관객 점유율(%)", "data": [39.3, 57.5, 76.7, 87.2, 96.7, 100.0]}], "unit": "누적 관객 점유율(%)", "summary": "688편 중 상위 10%(68편)가 전체 관객의 <b>57.5%</b>, 상위 20%가 <b>76.7%</b>를 가져갑니다. 하위 절반의 몫은 3.3%뿐입니다.", "insight": "한국 극장 시장은 소수 대작이 관객을 독점하는 승자독식 구조입니다. 같은 그림을 ①최대 도달형은 \"상단 꼬리가 두껍다\"는 기회로, ⑥하방 방어형은 \"중위권 이하는 회수 자체가 어렵다\"는 위험으로 읽습니다.", "rec": "상위 20% 진입을 노릴 차별화 포인트가 없다면 기대 관객을 중앙값이 아니라 하위 구간 기준으로 다시 잡으세요.", "opts": {"max": 100}}, "J2": {"code": "J2", "name": "연도별 장르 트렌드", "cat": "T", "type": "multiline", "labels": [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024], "series": [{"label": "드라마", "data": [48.3, 51.7, 42.5, 51.0, 39.0, 29.0, 34.4, 32.0, 27.1, 38.3, 14.1]}, {"label": "액션", "data": [23.5, 22.0, 16.6, 21.3, 16.7, 22.0, 26.0, 16.9, 33.7, 22.4, 18.5]}, {"label": "코미디", "data": [10.1, 4.3, 11.5, 5.0, 14.3, 21.2, 13.0, 12.7, 11.0, 6.0, 13.7]}, {"label": "범죄", "data": [7.0, 9.2, 10.3, 15.3, 12.5, 11.7, 10.1, 11.9, 14.4, 22.2, 22.5]}, {"label": "스릴러", "data": [2.9, 4.5, 13.2, 4.9, 5.3, 2.7, 7.0, 13.7, 5.9, 2.7, 12.5]}], "unit": "개봉 편수 점유율(%)", "summary": "드라마 비중이 2014년 48.3%에서 2024년 <b>14.1%</b>로 급락하고, 범죄가 7.0%→<b>22.5%</b>로 올라섰습니다.", "insight": "장르 구성은 10년 사이 완전히 재편됐습니다. 드라마 축소는 OTT로의 이동, 범죄·액션 증가는 극장에서만 성립하는 체험형 기획으로의 쏠림을 보여 줍니다.", "rec": "장르별 성공률을 볼 때는 반드시 개봉 연도를 함께 보세요. 과거 10년 평균은 현재 시장을 과대·과소평가합니다.", "opts": {}}, "A2": {"code": "A2", "name": "1일차 관객수로 최종 맞히기", "cat": "R", "type": "scatter", "labels": null, "series": [{"label": "영화 1편", "data": [{"x": 368582.0, "y": 16264944}, {"x": 682701.0, "y": 17613682}, {"x": 467483.0, "y": 12692959}, {"x": 203813.0, "y": 13128080}, {"x": 406365.0, "y": 14410754}, {"x": 330118.0, "y": 11913725}, {"x": 184756.0, "y": 14245998}, {"x": 821466.0, "y": 11501621}, {"x": 414219.0, "y": 13395400}, {"x": 740844.0, "y": 10682813}, {"x": 1246603.0, "y": 12253247}, {"x": 477541.0, "y": 12705700}, {"x": 698088.0, "y": 12099971}, {"x": 872673.0, "y": 11565078}, {"x": 568092.0, "y": 10313086}, {"x": 489996.0, "y": 9426051}, {"x": 526680.0, "y": 9699092}, {"x": 386161.0, "y": 7264934}, {"x": 497498.0, "y": 7525339}, {"x": 216237.0, "y": 6979319}, {"x": 450171.0, "y": 8252669}, {"x": 273445.0, "y": 8646758}, {"x": 151845.0, "y": 7817446}, {"x": 142843.0, "y": 8656397}, {"x": 287228.0, "y": 7487545}, {"x": 203173.0, "y": 7759473}, {"x": 331736.0, "y": 7231638}, {"x": 392856.0, "y": 7150541}, {"x": 379079.0, "y": 7118592}, {"x": 230949.0, "y": 7071763}, {"x": 214065.0, "y": 6965706}, {"x": 164399.0, "y": 6851297}, {"x": 310042.0, "y": 6878264}, {"x": 464460.0, "y": 7049643}, {"x": 972161.0, "y": 6592151}, {"x": 318084.0, "y": 5143219}, {"x": 250237.0, "y": 6246849}, {"x": 122859.0, "y": 5440186}, {"x": 153400.0, "y": 6043458}, {"x": 216769.0, "y": 4573398}, {"x": 210790.0, "y": 4350029}, {"x": 274118.0, "y": 5294119}, {"x": 267112.0, "y": 5593551}, {"x": 308298.0, "y": 5636259}, {"x": 288966.0, "y": 5316325}, {"x": 376530.0, "y": 5063620}, {"x": 373859.0, "y": 4718036}, {"x": 333316.0, "y": 4971261}, {"x": 191090.0, "y": 5440945}, {"x": 252058.0, "y": 4750104}, {"x": 333867.0, "y": 4779501}, {"x": 244335.0, "y": 4573902}, {"x": 344910.0, "y": 4352669}, {"x": 230978.0, "y": 3847066}, {"x": 154652.0, "y": 4571142}, {"x": 236952.0, "y": 4451336}, {"x": 290024.0, "y": 4277071}, {"x": 126670.0, "y": 3613984}, {"x": 353000.0, "y": 3812080}, {"x": 101581.0, "y": 3329547}, {"x": 105398.0, "y": 3273771}, {"x": 201749.0, "y": 4001813}, {"x": 213172.0, "y": 4018341}, {"x": 81673.0, "y": 3310323}, {"x": 444585.0, "y": 3829891}, {"x": 301330.0, "y": 3754983}, {"x": 138761.0, "y": 3679019}, {"x": 287855.0, "y": 3849433}, {"x": 175397.0, "y": 3364079}, {"x": 165833.0, "y": 3389035}, {"x": 181459.0, "y": 3562123}, {"x": 233340.0, "y": 3317038}, {"x": 126797.0, "y": 3417629}, {"x": 158174.0, "y": 3586523}, {"x": 1010.0, "y": 3189091}, {"x": 121990.0, "y": 3189091}, {"x": 79698.0, "y": 3450143}, {"x": 235184.0, "y": 3148038}, {"x": 381521.0, "y": 2755236}, {"x": 87136.0, "y": 3280243}, {"x": 145572.0, "y": 2917213}, {"x": 112667.0, "y": 2547035}, {"x": 168336.0, "y": 2931897}, {"x": 122458.0, "y": 2812444}, {"x": 99411.0, "y": 2820029}, {"x": 151161.0, "y": 3044134}, {"x": 75882.0, "y": 2982022}, {"x": 181737.0, "y": 2860786}, {"x": 105838.0, "y": 2841788}, {"x": 368981.0, "y": 2524086}, {"x": 198365.0, "y": 2675559}, {"x": 147297.0, "y": 2195683}, {"x": 143580.0, "y": 2656694}, {"x": 171979.0, "y": 2146902}, {"x": 89772.0, "y": 2602273}, {"x": 336736.0, "y": 2042999}, {"x": 111652.0, "y": 2465678}, {"x": 206706.0, "y": 2571491}, {"x": 81509.0, "y": 2406232}, {"x": 475482.0, "y": 2594028}, {"x": 81424.0, "y": 2516128}, {"x": 157669.0, "y": 2512572}, {"x": 184517.0, "y": 2397792}, {"x": 274404.0, "y": 2564340}, {"x": 59736.0, "y": 1980769}, {"x": 142796.0, "y": 2424330}, {"x": 114589.0, "y": 1897784}, {"x": 332290.0, "y": 2227671}, {"x": 121122.0, "y": 2420729}, {"x": 144201.0, "y": 1916429}, {"x": 176063.0, "y": 2146764}, {"x": 201987.0, "y": 2359174}, {"x": 152329.0, "y": 2192172}, {"x": 104795.0, "y": 1721100}, {"x": 114540.0, "y": 2192243}, {"x": 81031.0, "y": 1967721}, {"x": 122543.0, "y": 2108273}, {"x": 99928.0, "y": 1773716}, {"x": 88406.0, "y": 2135614}, {"x": 66952.0, "y": 1774398}, {"x": 147537.0, "y": 2000490}, {"x": 85238.0, "y": 1901684}, {"x": 250106.0, "y": 1864076}, {"x": 61242.0, "y": 1715064}, {"x": 136701.0, "y": 2044564}, {"x": 158155.0, "y": 1538504}, {"x": 204066.0, "y": 1903703}, {"x": 97352.0, "y": 1638439}, {"x": 97117.0, "y": 1804112}, {"x": 253727.0, "y": 1826714}, {"x": 133838.0, "y": 1891993}, {"x": 67610.0, "y": 1719592}, {"x": 222088.0, "y": 1790797}, {"x": 78816.0, "y": 1854867}, {"x": 98730.0, "y": 1979311}, {"x": 47333.0, "y": 1426357}, {"x": 219234.0, "y": 1671548}, {"x": 37412.0, "y": 1571774}, {"x": 73064.0, "y": 1543813}, {"x": 79435.0, "y": 1462621}, {"x": 94495.0, "y": 1430121}, {"x": 74718.0, "y": 1625037}, {"x": 96139.0, "y": 1707487}, {"x": 128396.0, "y": 1762742}, {"x": 122202.0, "y": 1388309}, {"x": 107854.0, "y": 1735640}, {"x": 156629.0, "y": 1599290}, {"x": 380092.0, "y": 1609737}, {"x": 109879.0, "y": 1525718}, {"x": 122978.0, "y": 1545442}, {"x": 108463.0, "y": 1634403}, {"x": 146206.0, "y": 1258891}, {"x": 92461.0, "y": 1339242}, {"x": 97241.0, "y": 1593694}, {"x": 99364.0, "y": 1611519}, {"x": 102502.0, "y": 1470753}, {"x": 90899.0, "y": 1472006}, {"x": 131350.0, "y": 1505560}, {"x": 133028.0, "y": 1441813}, {"x": 106881.0, "y": 1236662}, {"x": 54153.0, "y": 1613392}, {"x": 157026.0, "y": 1676040}, {"x": 100941.0, "y": 1468301}, {"x": 82893.0, "y": 1426873}, {"x": 161564.0, "y": 1387508}, {"x": 89092.0, "y": 1441964}, {"x": 111778.0, "y": 1228685}, {"x": 57473.0, "y": 1227490}, {"x": 174011.0, "y": 1373316}, {"x": 96638.0, "y": 1264970}, {"x": 45220.0, "y": 1171648}, {"x": 93416.0, "y": 1128080}, {"x": 57161.0, "y": 1314274}, {"x": 97245.0, "y": 1387599}, {"x": 186007.0, "y": 1362634}, {"x": 175057.0, "y": 1340117}, {"x": 121834.0, "y": 1305145}, {"x": 173513.0, "y": 1245532}, {"x": 108280.0, "y": 1209689}, {"x": 55320.0, "y": 1176076}, {"x": 75630.0, "y": 1225142}, {"x": 45516.0, "y": 1186283}, {"x": 121999.0, "y": 1015453}, {"x": 73305.0, "y": 1206917}, {"x": 155917.0, "y": 1202058}, {"x": 95534.0, "y": 1183959}, {"x": 77448.0, "y": 1144894}, {"x": 60274.0, "y": 1026929}, {"x": 139965.0, "y": 1125319}, {"x": 92278.0, "y": 1168625}, {"x": 127677.0, "y": 972991}, {"x": 117538.0, "y": 1092738}, {"x": 55698.0, "y": 952386}, {"x": 77978.0, "y": 1129018}, {"x": 75112.0, "y": 1177438}, {"x": 83605.0, "y": 1110246}, {"x": 139198.0, "y": 1153109}, {"x": 19124.0, "y": 1168427}, {"x": 68531.0, "y": 901426}, {"x": 98673.0, "y": 1159787}, {"x": 42192.0, "y": 1061412}, {"x": 53241.0, "y": 1160935}, {"x": 89466.0, "y": 1124918}, {"x": 129937.0, "y": 834338}, {"x": 72873.0, "y": 899684}, {"x": 52696.0, "y": 870056}, {"x": 97168.0, "y": 1046313}, {"x": 78467.0, "y": 1069436}, {"x": 65484.0, "y": 818880}, {"x": 151261.0, "y": 958775}, {"x": 23047.0, "y": 893855}, {"x": 66643.0, "y": 987420}, {"x": 29603.0, "y": 971194}, {"x": 95271.0, "y": 951797}, {"x": 264711.0, "y": 990104}, {"x": 37142.0, "y": 800709}, {"x": 188818.0, "y": 752559}, {"x": 73635.0, "y": 955175}, {"x": 56370.0, "y": 984265}, {"x": 7812.0, "y": 738120}, {"x": 43690.0, "y": 738120}, {"x": 47027.0, "y": 775583}, {"x": 62171.0, "y": 970373}, {"x": 22805.0, "y": 893221}, {"x": 274510.0, "y": 897548}, {"x": 80774.0, "y": 855980}, {"x": 41498.0, "y": 664146}, {"x": 100184.0, "y": 687918}, {"x": 64914.0, "y": 682742}, {"x": 64050.0, "y": 679503}, {"x": 30999.0, "y": 715434}, {"x": 32889.0, "y": 686293}, {"x": 73132.0, "y": 848148}, {"x": 78391.0, "y": 710327}, {"x": 56.0, "y": 710327}, {"x": 162242.0, "y": 874967}, {"x": 63660.0, "y": 765963}, {"x": 144967.0, "y": 827918}, {"x": 131795.0, "y": 768442}, {"x": 136240.0, "y": 837500}, {"x": 20700.0, "y": 824079}, {"x": 108567.0, "y": 790158}, {"x": 32184.0, "y": 606273}, {"x": 105255.0, "y": 723414}, {"x": 34635.0, "y": 817547}, {"x": 33686.0, "y": 757430}, {"x": 42429.0, "y": 649895}, {"x": 21887.0, "y": 720558}, {"x": 16260.0, "y": 766758}, {"x": 82871.0, "y": 620992}, {"x": 101033.0, "y": 799275}, {"x": 58083.0, "y": 773996}, {"x": 96035.0, "y": 608639}, {"x": 77962.0, "y": 626815}, {"x": 61508.0, "y": 703024}, {"x": 88302.0, "y": 606612}, {"x": 41956.0, "y": 634953}, {"x": 83073.0, "y": 637021}, {"x": 42859.0, "y": 518269}, {"x": 67607.0, "y": 652453}, {"x": 108735.0, "y": 645082}, {"x": 45094.0, "y": 601675}, {"x": 33396.0, "y": 646412}, {"x": 75550.0, "y": 528900}, {"x": 37052.0, "y": 525427}, {"x": 161021.0, "y": 645922}, {"x": 89286.0, "y": 486060}, {"x": 121991.0, "y": 599050}, {"x": 5.0, "y": 531212}, {"x": 49583.0, "y": 531212}, {"x": 78995.0, "y": 458720}, {"x": 59737.0, "y": 654407}, {"x": 64516.0, "y": 616481}, {"x": 56742.0, "y": 489898}, {"x": 39397.0, "y": 592041}, {"x": 47432.0, "y": 609063}, {"x": 124067.0, "y": 525369}, {"x": 54088.0, "y": 528153}, {"x": 115456.0, "y": 628576}, {"x": 27938.0, "y": 587818}, {"x": 36258.0, "y": 508220}, {"x": 54251.0, "y": 632299}, {"x": 53451.0, "y": 553879}, {"x": 85855.0, "y": 537470}, {"x": 48839.0, "y": 575353}, {"x": 48348.0, "y": 591125}, {"x": 38864.0, "y": 452858}, {"x": 154579.0, "y": 550059}, {"x": 40701.0, "y": 447357}, {"x": 37070.0, "y": 443177}, {"x": 67380.0, "y": 526282}, {"x": 8166.0, "y": 431892}, {"x": 35936.0, "y": 519983}, {"x": 26010.0, "y": 447048}, {"x": 56757.0, "y": 424916}, {"x": 47430.0, "y": 412836}, {"x": 124688.0, "y": 528007}, {"x": 71077.0, "y": 510878}, {"x": 43149.0, "y": 474137}, {"x": 57510.0, "y": 487897}, {"x": 54297.0, "y": 459020}, {"x": 30547.0, "y": 399162}, {"x": 35247.0, "y": 398090}, {"x": 38060.0, "y": 397303}, {"x": 51973.0, "y": 400651}, {"x": 163644.0, "y": 450374}, {"x": 35607.0, "y": 431559}, {"x": 61795.0, "y": 465492}, {"x": 67072.0, "y": 465749}, {"x": 33542.0, "y": 380376}, {"x": 29855.0, "y": 398580}, {"x": 45153.0, "y": 385284}, {"x": 28793.0, "y": 480987}, {"x": 16506.0, "y": 472693}, {"x": 35807.0, "y": 403326}, {"x": 24638.0, "y": 480528}, {"x": 9278.0, "y": 387485}, {"x": 52321.0, "y": 476665}, {"x": 20706.0, "y": 357393}, {"x": 27304.0, "y": 489409}, {"x": 63347.0, "y": 425799}, {"x": 43694.0, "y": 416303}, {"x": 35839.0, "y": 436257}, {"x": 79801.0, "y": 431310}, {"x": 146965.0, "y": 470105}, {"x": 46567.0, "y": 428429}, {"x": 59907.0, "y": 446379}, {"x": 53333.0, "y": 433825}, {"x": 10545.0, "y": 445014}, {"x": 26870.0, "y": 478392}, {"x": 50014.0, "y": 414626}, {"x": 38128.0, "y": 404456}, {"x": 22317.0, "y": 356177}, {"x": 32857.0, "y": 306809}, {"x": 57616.0, "y": 410131}, {"x": 18236.0, "y": 332993}, {"x": 34877.0, "y": 340574}, {"x": 42670.0, "y": 313686}, {"x": 35583.0, "y": 383336}, {"x": 37015.0, "y": 385934}, {"x": 109242.0, "y": 336074}, {"x": 34334.0, "y": 383332}, {"x": 44469.0, "y": 380581}, {"x": 27676.0, "y": 314152}, {"x": 60407.0, "y": 387409}, {"x": 84068.0, "y": 351830}, {"x": 22057.0, "y": 351162}, {"x": 53657.0, "y": 356342}, {"x": 13936.0, "y": 339844}, {"x": 35078.0, "y": 303326}, {"x": 65584.0, "y": 351276}, {"x": 55985.0, "y": 347790}, {"x": 76800.0, "y": 315010}, {"x": 46362.0, "y": 307290}, {"x": 49585.0, "y": 346483}, {"x": 35140.0, "y": 320923}, {"x": 44941.0, "y": 324420}, {"x": 44340.0, "y": 336822}, {"x": 49100.0, "y": 323628}, {"x": 31843.0, "y": 263087}, {"x": 23357.0, "y": 293258}, {"x": 36639.0, "y": 266816}, {"x": 32598.0, "y": 308180}, {"x": 26180.0, "y": 316780}, {"x": 39555.0, "y": 260297}, {"x": 47391.0, "y": 286806}, {"x": 17766.0, "y": 306126}, {"x": 56016.0, "y": 246583}, {"x": 25929.0, "y": 288113}, {"x": 27048.0, "y": 265510}, {"x": 32837.0, "y": 288016}, {"x": 28097.0, "y": 236661}, {"x": 33072.0, "y": 262233}, {"x": 49216.0, "y": 317505}, {"x": 20239.0, "y": 231257}, {"x": 38356.0, "y": 236642}, {"x": 6167.0, "y": 228380}, {"x": 26557.0, "y": 233112}, {"x": 9112.0, "y": 278914}, {"x": 44056.0, "y": 224718}, {"x": 2578.0, "y": 283300}, {"x": 32277.0, "y": 257716}, {"x": 42736.0, "y": 256202}, {"x": 53485.0, "y": 250650}, {"x": 4097.0, "y": 216084}, {"x": 56855.0, "y": 217444}, {"x": 50553.0, "y": 238587}, {"x": 22214.0, "y": 212439}, {"x": 32805.0, "y": 229005}, {"x": 45957.0, "y": 200490}, {"x": 21108.0, "y": 191542}, {"x": 24326.0, "y": 232016}, {"x": 39108.0, "y": 194391}, {"x": 66686.0, "y": 197134}, {"x": 24259.0, "y": 217803}, {"x": 16462.0, "y": 212154}, {"x": 21128.0, "y": 165822}, {"x": 5231.0, "y": 52969}, {"x": 32680.0, "y": 185653}, {"x": 27887.0, "y": 203775}, {"x": 19449.0, "y": 171105}, {"x": 56.0, "y": 171105}, {"x": 56244.0, "y": 229059}, {"x": 21262.0, "y": 198211}, {"x": 13085.0, "y": 190237}, {"x": 22025.0, "y": 167878}, {"x": 58443.0, "y": 202007}, {"x": 4592.0, "y": 171367}, {"x": 27175.0, "y": 183784}, {"x": 21021.0, "y": 169789}, {"x": 18744.0, "y": 206953}, {"x": 35365.0, "y": 183479}, {"x": 28542.0, "y": 172969}, {"x": 18781.0, "y": 193484}, {"x": 13434.0, "y": 158265}, {"x": 26734.0, "y": 174938}, {"x": 15307.0, "y": 167333}, {"x": 43408.0, "y": 172212}, {"x": 13267.0, "y": 175889}, {"x": 26847.0, "y": 169855}, {"x": 40235.0, "y": 128133}, {"x": 70.0, "y": 128133}, {"x": 18797.0, "y": 140849}, {"x": 18122.0, "y": 136680}, {"x": 6930.0, "y": 135976}, {"x": 13283.0, "y": 172445}, {"x": 14281.0, "y": 149181}, {"x": 21892.0, "y": 149719}, {"x": 3199.0, "y": 151360}, {"x": 21742.0, "y": 142405}, {"x": 20553.0, "y": 141956}, {"x": 3017.0, "y": 141592}, {"x": 31078.0, "y": 137294}, {"x": 11617.0, "y": 112725}, {"x": 6669.0, "y": 121169}, {"x": 20564.0, "y": 121335}, {"x": 26887.0, "y": 133553}, {"x": 26180.0, "y": 129732}, {"x": 11867.0, "y": 41965}, {"x": 5429.0, "y": 108487}, {"x": 24402.0, "y": 134827}, {"x": 15518.0, "y": 124601}, {"x": 12790.0, "y": 101636}, {"x": 21790.0, "y": 120802}, {"x": 20586.0, "y": 106012}, {"x": 6768.0, "y": 135478}, {"x": 97289.0, "y": 100941}, {"x": 15489.0, "y": 108122}, {"x": 30566.0, "y": 101913}, {"x": 13118.0, "y": 96146}, {"x": 2955.0, "y": 115704}, {"x": 7799.0, "y": 93504}, {"x": 15086.0, "y": 101616}, {"x": 13723.0, "y": 101173}, {"x": 15711.0, "y": 88272}, {"x": 11085.0, "y": 97849}, {"x": 18923.0, "y": 93656}, {"x": 17601.0, "y": 79688}, {"x": 14535.0, "y": 102223}, {"x": 10458.0, "y": 103534}, {"x": 26333.0, "y": 102170}, {"x": 10379.0, "y": 100543}, {"x": 1735.0, "y": 99952}, {"x": 14163.0, "y": 88054}, {"x": 9130.0, "y": 95542}, {"x": 11157.0, "y": 79105}, {"x": 20063.0, "y": 97005}, {"x": 3528.0, "y": 94767}, {"x": 6261.0, "y": 59314}, {"x": 9110.0, "y": 79215}, {"x": 34.0, "y": 71194}, {"x": 14332.0, "y": 71194}, {"x": 21404.0, "y": 67971}, {"x": 4504.0, "y": 67840}, {"x": 19255.0, "y": 80989}, {"x": 12378.0, "y": 77621}, {"x": 5318.0, "y": 78929}, {"x": 8410.0, "y": 60175}, {"x": 11477.0, "y": 67368}, {"x": 15373.0, "y": 76321}, {"x": 3353.0, "y": 67319}, {"x": 12249.0, "y": 66883}, {"x": 5192.0, "y": 69303}, {"x": 2181.0, "y": 71330}, {"x": 7464.0, "y": 30912}, {"x": 2357.0, "y": 59923}, {"x": 8425.0, "y": 57883}, {"x": 6459.0, "y": 55227}, {"x": 13912.0, "y": 60365}, {"x": 8181.0, "y": 54410}, {"x": 7666.0, "y": 52618}, {"x": 10849.0, "y": 56835}, {"x": 8688.0, "y": 54450}, {"x": 6618.0, "y": 43967}, {"x": 7583.0, "y": 43688}, {"x": 2513.0, "y": 49751}, {"x": 5492.0, "y": 43300}, {"x": 7539.0, "y": 50196}, {"x": 6765.0, "y": 50419}, {"x": 7489.0, "y": 47684}, {"x": 15214.0, "y": 48279}, {"x": 6142.0, "y": 51207}, {"x": 5195.0, "y": 42342}, {"x": 4586.0, "y": 38225}, {"x": 7756.0, "y": 42965}, {"x": 8010.0, "y": 46623}, {"x": 8031.0, "y": 45638}, {"x": 9499.0, "y": 41054}, {"x": 5931.0, "y": 34886}, {"x": 2656.0, "y": 32752}, {"x": 8922.0, "y": 46817}, {"x": 4006.0, "y": 43562}, {"x": 7401.0, "y": 35916}, {"x": 3787.0, "y": 37637}, {"x": 8589.0, "y": 38155}, {"x": 1189.0, "y": 29078}, {"x": 5755.0, "y": 41198}, {"x": 5451.0, "y": 36792}, {"x": 1405.0, "y": 34001}, {"x": 5296.0, "y": 32278}, {"x": 6246.0, "y": 31742}, {"x": 562.0, "y": 26188}, {"x": 4091.0, "y": 27389}, {"x": 3093.0, "y": 9456}, {"x": 3191.0, "y": 27046}, {"x": 5881.0, "y": 23711}, {"x": 2115.0, "y": 22111}, {"x": 3268.0, "y": 26149}, {"x": 2877.0, "y": 20926}, {"x": 6562.0, "y": 46761}, {"x": 2728.0, "y": 25140}, {"x": 3941.0, "y": 16251}, {"x": 2034.0, "y": 21687}, {"x": 1610.0, "y": 19314}, {"x": 1711.0, "y": 20761}, {"x": 1922.0, "y": 21830}, {"x": 5422.0, "y": 22412}, {"x": 3679.0, "y": 23721}, {"x": 546.0, "y": 22110}, {"x": 2506.0, "y": 16776}, {"x": 500.0, "y": 18504}, {"x": 4644.0, "y": 15383}, {"x": 1098.0, "y": 15785}, {"x": 2693.0, "y": 15229}, {"x": 1694.0, "y": 12364}, {"x": 703.0, "y": 14437}, {"x": 2179.0, "y": 14386}, {"x": 528.0, "y": 7181}, {"x": 1899.0, "y": 10997}, {"x": 1433.0, "y": 11766}, {"x": 1620.0, "y": 12103}, {"x": 2013.0, "y": 13682}, {"x": 2071.0, "y": 10926}, {"x": 1679.0, "y": 14201}, {"x": 905.0, "y": 8528}, {"x": 2126.0, "y": 11650}, {"x": 1024.0, "y": 8662}, {"x": 1894.0, "y": 10854}, {"x": 523.0, "y": 8252}, {"x": 150.0, "y": 10612}, {"x": 917.0, "y": 9469}, {"x": 742.0, "y": 4075}, {"x": 1800.0, "y": 11168}, {"x": 777.0, "y": 6530}, {"x": 770.0, "y": 10094}, {"x": 625.0, "y": 12203}, {"x": 1887.0, "y": 7075}, {"x": 780.0, "y": 4394}, {"x": 1267.0, "y": 5916}, {"x": 358.0, "y": 7956}, {"x": 42.0, "y": 7430}, {"x": 547.0, "y": 6489}, {"x": 1268.0, "y": 4358}, {"x": 1456.0, "y": 4600}, {"x": 896.0, "y": 4746}, {"x": 793.0, "y": 5401}, {"x": 998.0, "y": 5163}, {"x": 1292.0, "y": 5473}, {"x": 661.0, "y": 5409}, {"x": 428.0, "y": 4253}, {"x": 758.0, "y": 4763}, {"x": 579.0, "y": 4472}, {"x": 1100.0, "y": 4267}, {"x": 539.0, "y": 4237}, {"x": 632.0, "y": 3904}, {"x": 947.0, "y": 3774}, {"x": 159.0, "y": 3581}, {"x": 423.0, "y": 3166}, {"x": 60.0, "y": 2521}, {"x": 1382.0, "y": 3568}, {"x": 1402.0, "y": 3216}, {"x": 438.0, "y": 3049}, {"x": 389.0, "y": 2950}, {"x": 396.0, "y": 3199}, {"x": 138.0, "y": 2789}, {"x": 361.0, "y": 3632}, {"x": 999.0, "y": 3855}, {"x": 383.0, "y": 2985}, {"x": 1098.0, "y": 3028}, {"x": 1332.0, "y": 1655}, {"x": 321.0, "y": 1799}, {"x": 346.0, "y": 2084}, {"x": 883.0, "y": 2098}, {"x": 469.0, "y": 4054}, {"x": 367.0, "y": 2284}, {"x": 398.0, "y": 2956}, {"x": 393.0, "y": 2492}, {"x": 314.0, "y": 2289}, {"x": 377.0, "y": 2673}, {"x": 74.0, "y": 3282}, {"x": 454.0, "y": 1653}, {"x": 410.0, "y": 2605}, {"x": 538.0, "y": 1794}, {"x": 260.0, "y": 2116}, {"x": 873.0, "y": 2729}, {"x": 194.0, "y": 1039}, {"x": 465.0, "y": 2340}, {"x": 81.0, "y": 1860}, {"x": 259.0, "y": 2475}, {"x": 115.0, "y": 1951}, {"x": 261.0, "y": 2018}, {"x": 226.0, "y": 1681}, {"x": 229.0, "y": 1568}, {"x": 272.0, "y": 2156}, {"x": 197.0, "y": 1357}, {"x": 852.0, "y": 2595}, {"x": 269.0, "y": 1503}, {"x": 101.0, "y": 1284}, {"x": 62.0, "y": 1416}, {"x": 165.0, "y": 1147}, {"x": 99.0, "y": 1483}, {"x": 912.0, "y": 2070}, {"x": 174.0, "y": 1416}, {"x": 27.0, "y": 1039}, {"x": 102.0, "y": 919}, {"x": 71.0, "y": 592}, {"x": 192.0, "y": 1180}, {"x": 98.0, "y": 1159}, {"x": 289.0, "y": 896}, {"x": 1729.0, "y": 1733}, {"x": 1164.0, "y": 1694}, {"x": 760.0, "y": 1688}, {"x": 8.0, "y": 1245}, {"x": 136.0, "y": 779}, {"x": 131.0, "y": 1407}, {"x": 21.0, "y": 809}, {"x": 136.0, "y": 718}, {"x": 330.0, "y": 961}, {"x": 436.0, "y": 988}, {"x": 42.0, "y": 652}, {"x": 76.0, "y": 539}, {"x": 1012.0, "y": 1227}, {"x": 269.0, "y": 748}, {"x": 138.0, "y": 542}, {"x": 500.0, "y": 1000}, {"x": 62.0, "y": 507}, {"x": 18.0, "y": 677}, {"x": 177.0, "y": 542}, {"x": 76.0, "y": 1188}, {"x": 24.0, "y": 533}, {"x": 442.0, "y": 616}, {"x": 299.0, "y": 566}]}], "unit": "가로: 1일차 관객수 · 세로: 최종 관객수 (로그 스케일)", "summary": "개봉 첫날 관객수만으로 최종 관객수의 <b>85.5%</b>가 설명됩니다 (log-log R²=0.855, n=662). 이 데이터에서 가장 강한 단일 신호입니다.", "insight": "첫날이 최종을 결정하는 게 아니라, 개봉 전 스크린 배정·인지도·기대치가 첫날과 최종에 동시에 반영된 결과입니다. 그래서 개봉 후 만회 여지가 구조적으로 작습니다.", "rec": "개봉 1일차 실적이 나온 시점에 손절/증액 판단 기준선을 미리 정해 두세요. 판정은 그날 이미 가능합니다.", "opts": {"logScale": true, "slope": 0.99, "intercept": 1.097, "r2": 0.855}}, "K3": {"code": "K3", "name": "시리즈·속편 성과", "cat": "I", "type": "grouped", "labels": ["베테랑", "범죄도시", "마녀", "정직한 후보", "자백", "행복의 나라"], "series": [{"label": "첫 편", "data": [1339.5, 685.1, 318.9, 152.6, 73.8, 71.0]}, {"label": "후속 최대", "data": [752.5, 1269.3, 318.9, 90.0, 73.8, 71.0]}], "unit": "관객수(만 명)", "summary": "11개 시리즈 중 후속이 첫 편을 뚜렷하게 넘긴 것은 <b>범죄도시</b>뿐입니다 (685만 → 1,269만).", "insight": "속편이 이겨서 시리즈가 된 게 아니라, 잘된 작품만 속편이 됩니다. 첫 편 성적이 이미 상위권이므로 후속은 대부분 유지 아니면 감소로 끝납니다.", "rec": "속편 기획은 \"전편만큼\"을 기본 시나리오로 잡고, 세계관·빌런 교체 같은 신선도 장치가 있을 때만 상향 조정하세요.", "opts": {}}, "C2": {"code": "C2", "name": "주연 배우별 성과 (3편 이상)", "cat": "P", "type": "hbar", "labels": ["황정민", "김남길", "현빈", "이병헌", "김윤석", "조정석", "유해진", "류준열", "이정재", "마동석"], "series": [{"label": "작품당 관객수 중앙값(만 명)", "data": [705.9, 457.1, 393.4, 384.7, 361.4, 298.2, 281.2, 243.4, 239.8, 239.3]}], "unit": "관객수 중앙값(만 명)", "summary": "황정민이 12편 중앙값 <b>706만</b>으로 1위. 상위권은 대부분 대형 장르물 주연에 집중돼 있습니다.", "insight": "티켓파워는 배우 개인의 힘이라기보다 \"대형 기획에 캐스팅되는 배우\"라는 선택 편향을 포함합니다. 편수가 적은 배우일수록 중앙값이 흔들립니다.", "rec": "캐스팅 근거로 쓸 때는 중앙값과 함께 편수를 확인하고, 3~4편짜리 상위 기록은 그대로 믿지 마세요.", "opts": {}}, "D1": {"code": "D1", "name": "관람등급별 관객수 분포", "cat": "A", "type": "range", "labels": ["전체관람가", "12세이상", "15세이상", "청소년관람불가"], "series": [{"label": "P25(하위 25%)", "data": [1.0, 10.2, 6.9, 0.3]}, {"label": "중앙값", "data": [6.7, 62.9, 43.0, 14.9]}, {"label": "P75(상위 25%)", "data": [30.6, 174.9, 167.5, 71.0]}], "unit": "관객수(만 명)", "summary": "12세이상이 중앙값 <b>62.9만</b>으로 가장 높고, 청소년관람불가는 P25가 <b>0.3만</b>까지 떨어져 하방이 가장 깊습니다.", "insight": "평균이 아니라 사분위로 보면 등급의 진짜 성격이 드러납니다. 15세는 편수가 가장 많은 대신 편차도 가장 크고, 전체관람가는 상단이 막혀 있습니다.", "rec": "등급은 도달 가능한 최대치보다 하방을 먼저 결정합니다. 하방이 중요한 기획이라면 12세 이하 등급을 우선 검토하세요.", "opts": {}}, "E1": {"code": "E1", "name": "월별 시즌성", "cat": "S", "type": "bar", "labels": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"], "series": [{"label": "해당 월 총관객수(만 명)", "data": [8268.2, 5427.6, 2719.6, 3786.5, 7493.0, 4601.3, 11164.9, 12176.1, 7959.2, 5569.7, 6583.0, 10819.9]}], "unit": "총관객수(만 명)", "summary": "8월(1억 2,176만)·7월·12월이 3대 성수기, 3월(2,720만)이 최저입니다. 성수기와 비수기 격차 <b>4.5배</b>.", "insight": "수요 자체가 계절을 탑니다. 비수기는 경쟁작이 적다는 장점이 있지만 시장 파이가 작아, 경쟁 회피 이득보다 수요 감소 손실이 큰 경우가 많습니다.", "rec": "중소 예산은 5·6·9월처럼 대작 사이 빈 슬롯을 노리고, 3~4월은 절대 관객 기대치를 낮춘 상태에서만 선택하세요.", "opts": {}}, "G5": {"code": "G5", "name": "개봉 곡선 3유형", "cat": "R", "type": "bar", "labels": ["초반 소진형", "표준형", "뒷심형"], "series": [{"label": "관객수 중앙값(만 명)", "data": [8.0, 52.9, 117.5]}], "unit": "관객수 중앙값(만 명)", "summary": "역주행 지수 3분위로 나누면 뒷심형(117만)이 초반 소진형(8만)의 <b>15배</b>입니다. 평점도 8.18 vs 7.24로 갈립니다.", "insight": "초반 화력이 아니라 <b>초반 이후의 기울기</b>가 최종을 가릅니다. 뒷심형은 집중도(62.5%)가 낮아 10일 이후 관객이 계속 들어오는 유형입니다.", "rec": "개봉 4일차 대비 10일차 비율을 상시 지표로 만들어, 2주차 스크린 협상 전에 어느 유형인지 먼저 판정하세요.", "opts": {}}, "G1": {"code": "G1", "name": "장르별 2주차 유지율", "cat": "R", "type": "hbar", "labels": ["어드벤처", "사극", "인물", "드라마", "멜로드라마", "범죄", "액션", "코미디", "가족", "판타지"], "series": [{"label": "2주차 유지율(%)", "data": [41.8, 39.7, 38.8, 35.8, 35.7, 32.7, 32.4, 31.7, 30.5, 29.8]}], "unit": "1주차 일평균 대비 2주차 유지율(%)", "summary": "어드벤처(41.8%)·사극(39.7%)이 가장 잘 버티고, 스릴러(27.6%)는 가장 빨리 빠집니다.", "insight": "유지율은 스크린 재배정 협상의 근거 지표입니다. 장르마다 정상 감쇠 속도가 다르므로, 같은 30%도 어드벤처면 부진이고 스릴러면 선방입니다.", "rec": "2주차 스크린 협상 자료에 장르 기준선을 함께 제시하면, 절대 수치만 볼 때보다 유리한 조건을 얻을 수 있습니다.", "opts": {}}, "C1": {"code": "C1", "name": "감독별 성과 (3편 이상)", "cat": "P", "type": "hbar", "labels": ["김용화", "이석훈", "류승완", "김한민", "장재현", "연상호", "우민호", "김성훈", "곽경택", "김성수"], "series": [{"label": "작품당 관객수 중앙값(만 명)", "data": [1225.3, 775.9, 659.2, 591.9, 544.1, 381.2, 375.3, 345.0, 286.1, 259.4]}], "unit": "관객수 중앙값(만 명)", "summary": "김용화 감독이 3편 중앙값 <b>1,225만</b>으로 1위. 상위권은 액션·재난·사극 등 대형 장르물에 특화돼 있습니다.", "insight": "중앙값이 높은 감독보다 <b>중앙값과 최대값의 격차가 작은</b> 감독이 투자 관점에서 안정적입니다. 격차가 크면 한 편의 성공이 평균을 끌어올린 경우입니다.", "rec": "감독 랭킹은 중앙값 단독으로 보지 말고 최대/중앙 비율을 같이 계산해 안정성 순으로 재정렬하세요.", "opts": {}}, "J4": {"code": "J4", "name": "배급사 스크린 효율", "cat": "M", "type": "hbar", "labels": ["쇼박스", "CJ ENM", "NEW", "롯데", "플러스엠", "기타"], "series": [{"label": "스크린 1개당 최종 관객(명)", "data": [1696.0, 1640.0, 1170.0, 973.0, 831.0, 389.0]}], "unit": "스크린 1개당 최종 관객(명)", "summary": "쇼박스가 스크린당 <b>1,696명</b>으로 1위. 편수 1위인 CJ ENM(1,640명)보다 높습니다.", "insight": "총량 순위와 효율 순위가 다릅니다. 스크린을 많이 확보하는 능력과, 확보한 스크린을 채우는 능력은 별개입니다.", "rec": "배급사 협상 시 총 관객이 아니라 스크린당 효율을 기준으로 비교하면 규모 효과를 걷어낸 실력을 볼 수 있습니다.", "opts": {}}, "G4": {"code": "G4", "name": "스크린당 초반 화력", "cat": "M", "type": "hbar", "labels": ["쇼박스", "CJ ENM", "롯데", "NEW", "플러스엠", "기타"], "series": [{"label": "스크린 1개당 1일차 관객(명)", "data": [134.9, 116.0, 89.0, 87.0, 66.8, 44.0]}], "unit": "스크린 1개당 1일차 관객(명)", "summary": "쇼박스 <b>134.9명</b>, CJ ENM 116.0명 순. 기타 배급사(44.0명)와는 3배 차이입니다.", "insight": "규모 효과를 걷어낸 \"첫날에 좌석을 채우는 힘\"입니다. 스크린 확보량(J4)이 비슷해도 이 값이 낮으면 개봉 전 인지도 형성에 실패한 것입니다.", "rec": "개봉 전 마케팅 성과를 평가할 때 총 관객이 아니라 이 지표로 목표를 세우세요.", "opts": {}}, "E3": {"code": "E3", "name": "배급사 × 장르 포트폴리오", "cat": "G", "type": "stacked", "labels": ["CJ ENM", "롯데", "쇼박스", "NEW", "플러스엠", "기타"], "series": [{"label": "드라마", "data": [38.0, 44.4, 39.8, 29.9, 34.3, 31.0]}, {"label": "액션", "data": [20.7, 14.5, 14.5, 13.1, 11.8, 12.3]}, {"label": "코미디", "data": [8.7, 15.4, 12.0, 16.8, 11.8, 13.5]}, {"label": "범죄", "data": [13.3, 4.3, 14.5, 10.3, 14.7, 9.1]}, {"label": "스릴러", "data": [7.3, 6.8, 4.8, 12.1, 11.8, 10.5]}, {"label": "기타 장르", "data": [12.0, 14.6, 14.4, 17.8, 15.6, 23.6]}], "unit": "배급사 라인업 내 장르 구성비(%)", "summary": "롯데는 드라마 비중 44.4%로 가장 높고, CJ ENM은 액션(20.7%) 비중이 가장 큽니다.", "insight": "배급사마다 라인업 색깔이 다릅니다. 같은 기획이라도 어느 배급사 슬롯에 들어가느냐에 따라 경쟁 상대와 스크린 배정 우선순위가 달라집니다.", "rec": "기획 장르와 배급사 포트폴리오를 대조해, 그 배급사 라인업에서 \"빈 칸\"에 해당하는 장르로 접근하세요.", "opts": {}}, "E2": {"code": "E2", "name": "연도별 객단가", "cat": "R", "type": "line", "labels": [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024], "series": [{"label": "객단가(원)", "data": [7590.0, 7745.0, 7807.0, 7784.0, 8204.0, 8250.0, 8510.0, 8918.0, 9404.0, 9581.0, 9344.0]}], "unit": "객단가(원)", "summary": "평균 티켓값이 2014년 7,590원에서 2023년 9,581원으로 <b>23% 상승</b>했습니다.", "insight": "연도가 다른 매출액을 그대로 비교하면 티켓값 상승분이 성과로 오인됩니다. 매출 기준 시계열 비교는 반드시 객단가로 디플레이트해야 합니다.", "rec": "ROI·BEP 계산은 매출액이 아니라 관객수 기준으로 세우고, 매출은 그 해 객단가로 환산해 검증하세요.", "opts": {"beginAtZero": false}}, "J3": {"code": "J3", "name": "스크린 집중도 추이", "cat": "M", "type": "line", "labels": [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024], "series": [{"label": "상위 10% 작품의 스크린 점유율(%)", "data": [23.3, 20.2, 22.1, 20.5, 18.4, 20.0, 22.8, 23.0, 25.1, 29.1, 31.0]}], "unit": "상위 10% 스크린 점유율(%)", "summary": "상위 10% 작품의 스크린 점유율이 2018년 18.4%에서 <b>31%</b>까지 올라갔습니다.", "insight": "스크린 집중이 심해지는 추세는 중위권 작품의 상영 기회 자체가 줄고 있다는 뜻입니다. 파레토(J1)의 쏠림이 더 심해지는 방향으로 진행 중입니다.", "rec": "중예산 기획은 스크린 확보 가정을 과거 평균이 아니라 최근 2~3년 수치로 보수적으로 잡으세요.", "opts": {"beginAtZero": false}}, "A5": {"code": "A5", "name": "회차당 관객수 (좌석 채움 효율)", "cat": "P", "type": "multiline", "labels": ["1일차", "2일차", "3일차", "4일차", "5일차", "6일차", "7일차", "8일차", "9일차", "10일차"], "series": [{"label": "대흥행 (300만+)", "data": [48.1, 44.1, 52.0, 82.2, 74.0, 39.4, 37.0, 39.1, 38.3, 41.2]}, {"label": "중간 (50~300만)", "data": [24.7, 22.6, 27.9, 42.5, 31.0, 17.2, 16.7, 16.1, 16.5, 20.8]}, {"label": "소규모 (50만 미만)", "data": [12.2, 9.4, 10.8, 14.3, 10.2, 6.5, 6.8, 8.3, 8.0, 9.2]}], "unit": "상영 1회당 관객수(명)", "summary": "대흥행작은 첫 주말 회차당 <b>82명</b>까지 올라가지만 소규모 작품은 최대 14.3명에 그칩니다.", "insight": "상영 횟수까지 감안한 실제 좌석 채움 효율입니다. 관객수만 보면 규모 차이지만, 이 지표로 보면 <b>같은 좌석을 얼마나 효율적으로 팔았는가</b>가 드러납니다.", "rec": "비용 효율을 따진다면 총 관객이 아니라 이 값을 KPI로 잡고, 4~5일차 피크 수치를 손익 판단 기준으로 쓰세요.", "opts": {}}, "D3": {"code": "D3", "name": "영화유형별 성과", "cat": "G", "type": "bar", "labels": ["극영화", "애니메이션", "다큐멘터리"], "series": [{"label": "관객수 중앙값(만 명)", "data": [43.1, 11.8, 1.5]}], "unit": "관객수 중앙값(만 명)", "summary": "극영화 중앙값 43.1만 vs 다큐멘터리 1.5만으로 <b>28배</b> 차이. 반면 평점은 다큐(8.86)가 극영화(7.5)보다 높습니다.", "insight": "관객수와 평점이 정반대로 갑니다. 애니·다큐는 만족도는 높지만 도달 규모가 구조적으로 제한됩니다 — 평점 높은 기획이 안전한 기획은 아닙니다.", "rec": "비극영화 기획은 극장 관객수 기준이 아니라 부가판권·상영 기간 등 다른 회수 구조로 평가하세요.", "opts": {}}, "L1": {"code": "L1", "name": "신호가 없던 지표 (헛다리 사례)", "cat": "K", "type": "hbar", "labels": ["배우 수", "줄거리 길이(자)", "영화명 길이(자)"], "series": [{"label": "관객수와의 상관계수 r", "data": [0.185, 0.075, -0.168]}], "unit": "관객수와의 상관계수 r", "summary": "배우 수(r=0.185)·줄거리 길이(0.075)·영화명 길이(-0.168) 모두 흥행과 <b>사실상 무관</b>합니다.", "insight": "\"안 되는 것\"을 명시하는 것도 결과입니다. 배우 수는 KMDb가 6명에서 잘라 제공해 애초에 실제 출연 규모가 아니며, 나머지 둘은 인과 경로 자체가 없습니다.", "rec": "이 세 지표를 예측 모델 피처나 투자 심사 항목으로 쓰고 있다면 제거하세요. 노이즈만 늘립니다.", "opts": {"symmetric": true}}, "G2": {"code": "G2", "name": "역주행 지수 TOP", "cat": "K", "type": "hbar", "labels": ["하이재킹", "히말라야", "침입자", "수상한 그녀", "공조", "고산자, 대동여지도", "밀정", "탈출: 프로젝트 사일런스", "해적: 바다로 간 산적", "파묘"], "series": [{"label": "역주행 지수 (10일차 ÷ 4일차)", "data": [1.93, 1.77, 1.67, 1.59, 1.42, 1.41, 1.3, 1.24, 1.08, 1.02]}], "unit": "역주행 지수 (10일차 ÷ 4일차)", "summary": "하이재킹(1.93)·히말라야(1.77)처럼 10일차가 4일차를 넘긴 작품이 존재합니다. 전체 중앙값은 0.23입니다.", "insight": "초반 부진이 곧 실패는 아닙니다. 다만 역주행 사례는 소수이고, 대부분 입소문이 붙을 시간을 벌어 준 <b>스크린 유지</b>가 동반됐습니다.", "rec": "초반 부진 작품을 정리할 때 4일차만 보지 말고 10일차까지 유예 기준을 두되, 스크린 유지 비용과 함께 판단하세요.", "opts": {}}, "M9": {"code": "M9", "name": "부정 태그 집중 작품", "cat": "K", "type": "hbar", "labels": ["신과함께-죄와 벌", "비상선언", "반도", "히말라야", "발신제한", "신과함께-인과 연", "더 문", "나의 독재자", "나쁜 녀석들: 더 무비", "브로커"], "series": [{"label": "부정 태그 언급률 합계(%)", "data": [34.7, 27.2, 22.2, 19.8, 17.2, 17.1, 16.5, 15.1, 14.8, 14.6]}], "unit": "신파·발연기·억지·지루함·뻔함 언급률 합계(%)", "summary": "신과함께-죄와 벌이 부정 태그 합계 <b>34.7%</b>로 1위지만 관객수는 1,441만입니다.", "insight": "부정 여론의 밀도와 흥행은 별개입니다. 부정 태그는 흥행 예측이 아니라 <b>후속작·시리즈 기획 시 피해야 할 요소</b>를 알려 주는 진단 지표로 써야 합니다.", "rec": "속편·리메이크 기획 단계에서 전작의 부정 태그 상위 항목을 체크리스트로 만들어 반영하세요.", "opts": {}}};
+const TYPE_CORE = {"maximum_achiever": ["J1", "J2", "A2", "K3", "C2"], "stable_achiever": ["D1", "E1", "G5", "G1", "C1"], "large_scale": ["J4", "G4", "E3", "E2", "J3"], "cost_efficient": ["A5", "J4", "D3", "G1", "E2"], "break_even_focused": ["A2", "G5", "G1", "J1", "L1"], "downside_defender": ["D1", "J1", "G2", "D3", "M9"]};
+
+        const TYPE_WHY = {
+            maximum_achiever:   '상단 꼬리가 얼마나 두꺼운지를 보는 유형입니다. 시장의 집중 구조와 장르 이동, 그리고 첫날 신호부터 확인합니다.',
+            stable_achiever:    '최고점이 아니라 가운데값과 흔들림을 보는 유형입니다. 분포와 개봉 시기 배치가 먼저입니다.',
+            large_scale:        '투입 규모와 매출을 함께 보는 유형입니다. 스크린 단위 효율과 배급사 비교가 중심입니다.',
+            cost_efficient:     '예산 안에서의 타율을 보는 유형입니다. 좌석·스크린당 효율과 저예산 트랙의 현실이 먼저입니다.',
+            break_even_focused: '"몇 편이 본전을 넘겼나"만 보는 유형입니다. 본전 판정을 언제 확정할 수 있는지가 핵심입니다.',
+            downside_defender:  '표를 거꾸로 읽는 유형입니다. 바닥선·분산·조기 경보 신호가 먼저입니다.'
+        };
+
+        let typeCharts = [];
+        let viewingType = null;   // 현재 보고 있는 유형 (기본 = 진단된 유형)
+
+        function palette(cat, alpha) {
+            const c = CAT_COLOR[cat] || '#3b82f6';
+            return alpha ? c + alpha : c;
+        }
+
+        function buildTypeSwitch() {
+            const row = document.getElementById('typeSwitchRow');
+            row.innerHTML = '<span class="type-switch-label">다른 유형으로 보기</span>';
+            Object.keys(INVESTOR_META).forEach(key => {
+                const meta = INVESTOR_META[key];
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'type-pill' + (key === viewingType ? ' active' : '');
+                btn.dataset.type = key;
+                btn.innerHTML = meta.icon + ' ' + meta.label +
+                    (key === investorType ? '<span class="pill-mine">· 내 유형</span>' : '');
+                btn.onclick = () => { viewingType = key; buildTypeSwitch(); renderTypeCharts(); };
+                row.appendChild(btn);
+            });
+        }
+
+        function renderTypeCharts() {
+            typeCharts.forEach(c => c.destroy());
+            typeCharts = [];
+            const key = viewingType || investorType;
+            const ids = TYPE_CORE[key] || [];
+            const meta = INVESTOR_META[key];
+            document.getElementById('typeWhyNote').innerHTML =
+                '<b>' + meta.label + '</b> — ' + (TYPE_WHY[key] || '');
+
+            const grid = document.getElementById('typeChartGrid');
+            grid.innerHTML = '';
+            ids.forEach((code, i) => {
+                const m = ANALYSIS_MODULES[code];
+                if (!m) return;
+                const col = document.createElement('div');
+                col.className = 'col-lg-6';
+                col.innerHTML = `
+                    <div class="card dashboard-card p-3 h-100">
+                        <div class="analysis-card-head">
+                            <span class="rank-badge">${i + 1}</span>
+                            <h6>${m.name}</h6>
+                            <span class="cat-chip ms-auto" style="background:${palette(m.cat)}22;color:${palette(m.cat)};">
+                                ${m.code} · ${CAT_LABEL[m.cat]}분석
+                            </span>
+                        </div>
+                        <div class="chart-box"><canvas id="tchart_${key}_${code}"></canvas></div>
+                        <div class="text-muted mt-2" style="font-size:.75rem;">${m.unit}</div>
+                        <div class="sir-block mt-2">
+                            <div><span class="sir-key text-primary">Summary</span>— ${m.summary}</div>
+                            <div><span class="sir-key" style="color:${palette(m.cat)}">Insight</span>— ${m.insight}</div>
+                            <div><span class="sir-key text-success">Recommendation</span>— ${m.rec}</div>
+                        </div>
+                    </div>`;
+                grid.appendChild(col);
+            });
+            ids.forEach(code => {
+                const m = ANALYSIS_MODULES[code];
+                if (!m) return;
+                const ctx = document.getElementById(`tchart_${key}_${code}`);
+                if (ctx) typeCharts.push(makeChart(ctx, m));
+            });
+        }
+
+        const MULTI_COLORS = ['#1e3a8a', '#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
+
+        function makeChart(ctx, m) {
+            const color = palette(m.cat);
+            const baseOpts = {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { intersect: false, mode: 'index' } },
+                scales: { y: { beginAtZero: m.opts.beginAtZero !== false } }
+            };
+
+            if (m.type === 'hbar') {
+                return new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: m.labels, datasets: [{ data: m.series[0].data, backgroundColor: color, borderRadius: 4 }] },
+                    options: Object.assign({}, baseOpts, {
+                        indexAxis: 'y',
+                        scales: { x: { beginAtZero: !m.opts.symmetric }, y: { ticks: { font: { size: 10 } } } },
+                        plugins: { legend: { display: false } }
+                    })
+                });
+            }
+            if (m.type === 'line') {
+                return new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: m.labels, datasets: [{ data: m.series[0].data, borderColor: color,
+                        backgroundColor: color + '22', fill: true, tension: .3, pointRadius: 3 }] },
+                    options: Object.assign({}, baseOpts, {
+                        scales: { y: { beginAtZero: m.opts.beginAtZero !== false } }
+                    })
+                });
+            }
+            if (m.type === 'multiline') {
+                return new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: m.labels, datasets: m.series.map((sv, i) => ({
+                        label: sv.label, data: sv.data, borderColor: MULTI_COLORS[i % MULTI_COLORS.length],
+                        backgroundColor: 'transparent', tension: .3, pointRadius: 2, borderWidth: 2 })) },
+                    options: Object.assign({}, baseOpts, {
+                        plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+                    })
+                });
+            }
+            if (m.type === 'grouped' || m.type === 'range') {
+                return new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: m.labels, datasets: m.series.map((sv, i) => ({
+                        label: sv.label, data: sv.data,
+                        backgroundColor: i === m.series.length - 1 ? color : color + (i === 0 ? '44' : '88'),
+                        borderRadius: 4 })) },
+                    options: Object.assign({}, baseOpts, {
+                        plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+                    })
+                });
+            }
+            if (m.type === 'stacked') {
+                return new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: m.labels, datasets: m.series.map((sv, i) => ({
+                        label: sv.label, data: sv.data,
+                        backgroundColor: MULTI_COLORS[i % MULTI_COLORS.length] })) },
+                    options: Object.assign({}, baseOpts, {
+                        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+                        plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+                    })
+                });
+            }
+            if (m.type === 'scatter') {
+                const pts = m.series[0].data;
+                const xs = pts.map(p => p.x);
+                const xmin = Math.max(1, Math.min.apply(null, xs)), xmax = Math.max.apply(null, xs);
+                const fit = [];
+                for (let k = 0; k <= 20; k++) {
+                    const lx = Math.log10(xmin) + (Math.log10(xmax) - Math.log10(xmin)) * k / 20;
+                    fit.push({ x: Math.pow(10, lx), y: Math.pow(10, m.opts.intercept + m.opts.slope * lx) });
+                }
+                return new Chart(ctx, {
+                    type: 'scatter',
+                    data: { datasets: [
+                        { label: '영화 1편', data: pts, backgroundColor: color + '66', pointRadius: 2.5 },
+                        { label: '회귀선 (R²=' + m.opts.r2 + ')', data: fit, type: 'line',
+                          borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, fill: false }
+                    ] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                                   tooltip: { callbacks: { label: c => '1일차 ' + Math.round(c.parsed.x).toLocaleString() +
+                                              '명 → 최종 ' + Math.round(c.parsed.y).toLocaleString() + '명' } } },
+                        scales: {
+                            x: { type: 'logarithmic', title: { display: true, text: '1일차 관객수(명)', font: { size: 10 } } },
+                            y: { type: 'logarithmic', title: { display: true, text: '최종 관객수(명)', font: { size: 10 } } }
+                        }
+                    }
+                });
+            }
+            /* 기본: 세로 막대 */
+            return new Chart(ctx, {
+                type: 'bar',
+                data: { labels: m.labels, datasets: [{ data: m.series[0].data, backgroundColor: color, borderRadius: 4 }] },
+                options: Object.assign({}, baseOpts, {
+                    scales: { y: { beginAtZero: true, max: m.opts.max } }
+                })
+            });
+        }
+
+        function renderInvestorDashboard(genres, prob, month) {
+            const meta = INVESTOR_META[investorType];
+            document.getElementById('investorDashboardTitle').innerText = `${meta.icon} ${meta.label}을 위한 분석`;
+            document.getElementById('investorDashboardDesc').innerText = meta.tagline + ' · 아래 지표는 진단된 성향에 맞춰 우선순위가 조정되었습니다.';
+
+            const result = INVESTOR_DASHBOARDS[investorType](genres, prob, month);
+            const grid = document.getElementById('investorMetricGrid');
+            grid.innerHTML = '';
+            result.cards.forEach(c => {
+                const col = document.createElement('div');
+                col.className = 'col-md-3 col-6 mb-3';
+                col.innerHTML = `
+                    <div class="metric-card">
+                        <div class="metric-label">${c.label}</div>
+                        <div class="metric-value">${c.value}</div>
+                        <div class="metric-desc">${c.desc}</div>
+                    </div>`;
+                grid.appendChild(col);
+            });
+            const insightCard = document.getElementById('investorInsightCard');
+            insightCard.style.display = 'block';
+            document.getElementById('investorInsightText').innerHTML = result.insight;
+
+            if (viewingType === null) viewingType = investorType;
+            buildTypeSwitch();
+            renderTypeCharts();
+        }
+
+        buildGenreCheckboxes();
+        renderQuizStep();
+
+        /* ============================================================
+           Analysis Catalog — 심화 분석 모듈 (A06, B01, D02, H01, C01, K03, J01, E01)
+           각 항목은 analysis_catalog.md 스펙의 render() 계약을 흉내낸
+           {id, name, category, chartType, ..., summary, insight, recommendation}
+           구조로 등록되어 있습니다. Dashboard는 이 객체만 소비하는
+           Logic-Blind Renderer로 동작합니다.
+        ============================================================ */
+        const ANALYSIS_CATALOG = [
+            {
+                id: 'A06', name: '개봉 요일별 흥행', category: 'S', chartType: 'bar',
+                labels: ['월','화','수','목','금','토'],
+                data: [9299, 870056, 487979, 140849, 102513, 1655],
+                unitLabel: '관객수 중앙값(명)',
+                summary: '전체 688편 중 412편(60%)이 수요일 개봉. 수요일 개봉작의 관객수 중앙값이 목·금 개봉작보다 3배 이상 높음.',
+                insight: '수요일 개봉이 절대다수인 이유는 관람료 할인·주중 회전율 확보 때문이지만, 실제로 수요일 개봉작 자체가 "믿고 거는" 대형 배급 슬롯을 독점하고 있어 요일 효과와 작품 규모 효과가 뒤섞여 있음. 목·금 개봉은 상대적으로 저예산·소규모 배급망 작품이 몰림.',
+                recommendation: '경쟁이 치열한 텐트폴 시즌엔 수요일을 피해 목요일 개봉으로 스크린 확보 경쟁을 낮추는 전략도 고려할 것.'
+            },
+            {
+                id: 'B01', name: '평점 구간별 흥행', category: 'R', chartType: 'bar',
+                labels: ['6점 미만','6.0~6.9','7.0~7.4','7.5~7.9','8.0~8.4','8.5점 이상'],
+                data: [11876, 262660, 333703, 653430, 553879, 436257],
+                unitLabel: '관객수 중앙값(명)',
+                summary: '평점과 흥행의 상관계수는 r=0.241로 약한 양의 상관. 8.5점 이상 그룹의 평균 관객수(220만)는 6점 미만 그룹(11.8만)의 18배.',
+                insight: '평점이 낮아도 흥행하는 작품(스타 캐스팅·마케팅 파워)과 평점이 높아도 흥행하지 못하는 작품(입소문은 좋으나 화제성 부족)이 공존해 상관관계가 약함. 평점은 "필요조건"이지 "충분조건"이 아님.',
+                recommendation: '평점만으로 흥행을 예측하지 말고, 화제성 지표(평가건수·언급률)와 결합해 판단할 것.'
+            },
+            {
+                id: 'D02', name: '상영시간과 흥행', category: 'P', chartType: 'bar',
+                labels: ['90분 미만','90~99분','100~109분','110~119분','120~129분','130분 이상'],
+                data: [22111, 54430, 317505, 601675, 1196600, 1897784],
+                unitLabel: '관객수 중앙값(명)',
+                summary: '상영시간과 흥행 규모는 r=0.339로 뚜렷한 양의 상관. 130분 이상 작품의 관객수 중앙값(190만)은 90~99분 작품(5.4만)의 35배.',
+                insight: '90분 미만은 저예산 장르물·다큐, 130분 이상은 텐트폴 대작이 대부분을 차지해 상영시간 자체보다 제작 규모(예산)의 대리 지표(proxy)로 작동함. 90~99분 구간이 오히려 평점 최저(7.01)인 점도 주목할 만함.',
+                recommendation: '상영시간을 늘려 흥행을 노리기보다, 상영시간이 반영하는 제작 규모·서사 밀도를 먼저 점검할 것.'
+            },
+            {
+                id: 'H01', name: '연도별 평점 추이', category: 'T', chartType: 'line',
+                labels: [2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024],
+                data: [7.22,7.42,8.04,8.15,7.88,8.14,7.70,7.34,7.27,7.23,7.45],
+                unitLabel: '평균 평점',
+                summary: '평균 평점은 2019년(8.14) 정점 이후 코로나 시기(2020~2021) 급락, 2022~2023년 저점(7.2대) 유지 후 2024년 소폭 반등(7.45).',
+                insight: '2019년 고점은 극장 관람 문화가 정점이던 시기와 겹침. 이후 하락은 OTT 확산으로 극장 관람 허들이 높아지며 확신 있는 작품만 보러 가는 관람 행태로 바뀌었을 가능성과, 관람 절대량 감소로 팬덤·특정 취향 관객 비중이 늘어난 표본 편향 가능성이 함께 있음.',
+                recommendation: '최근 3년 데이터는 코로나 이전 기준치와 직접 비교하지 말고, 별도 베이스라인으로 관리할 것.'
+            },
+            {
+                id: 'C01', name: '감독별 흥행 성과 (3편 이상)', category: 'P', chartType: 'hbar',
+                labels: ['김용화','이석훈','류승완','김한민','장재현','우민호','김성훈'],
+                data: [1225.3, 776.0, 659.2, 591.9, 544.1, 375.3, 345.0],
+                unitLabel: '관객수 중앙값(만 명)',
+                summary: '3편 이상 연출한 감독 중 김용화(신과함께 시리즈) 감독의 작품당 관객수 중앙값이 1,225만 명으로 압도적 1위.',
+                insight: '상위 감독 대부분 액션·재난·시대극 등 대형 장르물에 특화되어 있으며, 작품당 최대 관객수와 중앙값의 격차가 작을수록(류승완, 김한민 등) 흥행 안정성이 높음을 시사.',
+                recommendation: '투자 리스크를 낮추려면 최대치보다 중앙값·최소치 격차가 작은 감독을 우선 검토할 것.'
+            },
+            {
+                id: 'K03', name: '시리즈·속편 성과', category: 'I', chartType: 'grouped',
+                labels: ['베테랑','범죄도시','마녀','정직한 후보'],
+                first: [1339.5, 685.1, 318.9, 152.6],
+                sequel: [752.5, 1269.3, 318.9, 89.9],
+                unitLabel: '관객수(만 명)',
+                summary: '11개 시리즈 중 "범죄도시"만 속편이 전편 대비 뚜렷한 증가(2편 685만→최대 1,269만). 나머지는 유지 또는 감소.',
+                insight: '범죄도시는 매 편 다른 빌런·구조로 세계관을 확장한 프랜차이즈 전략이 유효했던 반면, 다른 시리즈는 원작 캐릭터·서사를 반복하며 피로도가 누적됨.',
+                recommendation: '속편 기획 시 동일 포맷 반복보다 세계관 확장·빌런 교체 등 신선도를 유지하는 구조 설계가 필요.'
+            },
+            {
+                id: 'J01', name: '파레토 — 상위 영화 쏠림', category: 'M', chartType: 'bar',
+                labels: ['상위5%','상위10%','상위20%','상위30%','상위50%'],
+                data: [39.3, 57.5, 76.7, 87.2, 96.7],
+                unitLabel: '누적 관객 점유율(%)',
+                summary: '688편 중 상위 10%(68편)가 전체 관객의 57.5%를, 상위 20%가 76.7%를 가져가는 극단적 쏠림 구조.',
+                insight: '한국 극장 시장은 소수의 대작이 관객을 독점하는 승자독식(winner-take-all) 구조. 중위권 이하 작품은 손익분기점 자체를 넘기기 어려운 구조적 리스크에 노출됨.',
+                recommendation: '중예산 프로젝트는 상위 20% 진입을 목표로 한 명확한 차별화 포인트 없이는 투자 순위를 낮게 책정할 것.'
+            },
+            {
+                id: 'E01', name: '월별 시즌성', category: 'S', chartType: 'bar',
+                labels: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
+                data: [82682315,54276252,27195826,37864984,74929981,46012684,111648967,121761210,79591734,55697305,65829616,108199080],
+                unitLabel: '해당월 총관객수(명)',
+                summary: '8월(1억 2,176만)·7월(1억 1,165만)·12월(1억 820만)이 3대 성수기. 3월(2,720만)·4월(3,786만)은 최저 비수기.',
+                insight: '여름(7~8월) 휴가철과 겨울(12월) 연말 시즌에 대작이 집중 배치되는 반면, 봄(3~4월)은 신학기·이사철과 겹쳐 관람 수요 자체가 낮음. 비수기에는 경쟁작이 적다는 장점이 있으나 절대 수요 자체가 작음.',
+                recommendation: '중소 예산 작품은 성수기 대작과의 스크린 경쟁을 피해 봄철 비수기를 틈새 전략으로 활용할 수 있음(단, 절대 관객 규모 기대치는 낮춰야 함).'
+            }
+        ];
+
+
+        function buildDeepAnalysisCards() {
+            const grid = document.getElementById('deepAnalysisGrid');
+            ANALYSIS_CATALOG.forEach(a => {
+                const col = document.createElement('div');
+                col.className = 'col-lg-6';
+                col.innerHTML = `
+                    <div class="card dashboard-card p-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <span class="badge badge-custom" style="background:${CAT_COLOR[a.category]}22;color:${CAT_COLOR[a.category]};">${a.id} · ${CAT_LABEL[a.category]}분석</span>
+                            <h6 class="fw-bold mb-0">${a.name}</h6>
+                        </div>
+                        <div style="height:220px;"><canvas id="chart_${a.id}"></canvas></div>
+                        <div class="mt-3" style="font-size:.85rem;">
+                            <div class="mb-2"><span class="fw-bold text-primary">Summary</span> — ${a.summary}</div>
+                            <div class="mb-2"><span class="fw-bold" style="color:${CAT_COLOR[a.category]}">Insight</span> — ${a.insight}</div>
+                            <div><span class="fw-bold text-success">Recommendation</span> — ${a.recommendation}</div>
+                        </div>
+                    </div>`;
+                grid.appendChild(col);
+            });
+
+            ANALYSIS_CATALOG.forEach(a => {
+                const ctx = document.getElementById('chart_' + a.id);
+                const color = CAT_COLOR[a.category];
+                if (a.chartType === 'grouped') {
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: a.labels,
+                            datasets: [
+                                { label: '전편', data: a.first, backgroundColor: color + '55' },
+                                { label: '속편(최대)', data: a.sequel, backgroundColor: color }
+                            ]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false,
+                            plugins: { legend: { display: true, position: 'bottom' } },
+                            scales: { y: { title: { display: true, text: a.unitLabel } } } }
+                    });
+                } else if (a.chartType === 'hbar') {
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: { labels: a.labels, datasets: [{ label: a.unitLabel, data: a.data, backgroundColor: color }] },
+                        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                            plugins: { legend: { display: false } } }
+                    });
+                } else if (a.chartType === 'line') {
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: { labels: a.labels, datasets: [{ label: a.unitLabel, data: a.data, borderColor: color, backgroundColor: color + '33', fill: true, tension: 0.3 }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                    });
+                } else {
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: { labels: a.labels, datasets: [{ label: a.unitLabel, data: a.data, backgroundColor: color }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                    });
+                }
+            });
+        }
+    </script>
+</body>
+</html>
